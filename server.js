@@ -548,18 +548,27 @@ const server = http.createServer(async (req, res) => {
         if (systemText) openaiMessages.push({ role: 'system', content: systemText });
         messages.forEach(m => {
           try {
-            let text = '';
-            if (m.parts) text = m.parts.map(p => p.text || '').join('');
-            else if (typeof m.content === 'string') text = m.content;
-            else if (Array.isArray(m.content)) text = m.content.map(p => p.text || '').join('');
-            if (!text.trim()) return;
             const role = m.role === 'model' ? 'assistant' : 'user';
-            openaiMessages.push({ role, content: text });
+            // Handle content with images
+            if (Array.isArray(m.content)) {
+              const parts = [];
+              m.content.forEach(p => {
+                if (p.type === 'text' && p.text) parts.push({ type: 'text', text: p.text });
+                else if (p.type === 'image' && p.source) parts.push({ type: 'image_url', image_url: { url: `data:${p.source.media_type};base64,${p.source.data}` } });
+              });
+              if (parts.length) openaiMessages.push({ role, content: parts });
+            } else {
+              let text = '';
+              if (m.parts) text = m.parts.map(p => p.text || '').join('');
+              else if (typeof m.content === 'string') text = m.content;
+              if (!text.trim()) return;
+              openaiMessages.push({ role, content: text });
+            }
           } catch(e) {}
         });
 
         const groqBody = JSON.stringify({
-          model: 'llama-3.1-8b-instant',
+          model: 'llama-3.2-11b-vision-preview',
           messages: openaiMessages,
           max_tokens: 4096,
           temperature: 0.9,
