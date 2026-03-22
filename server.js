@@ -532,22 +532,35 @@ async function transcribeAudio(audioBuffer, mimeType) {
 
 // ─── Motor de Voz: ElevenLabs TTS ────────────────────────────────────────────
 const ELEVENLABS_KEY = process.env.ELEVENLABS_KEY || '';
-// Voice ID: "Rachel" en español neutro es una buena opción por defecto
-const ELEVENLABS_VOICE = process.env.ELEVENLABS_VOICE || 'XrExE9yKIg1WjnnlVkGX'; // Matilda (español neutro)
 
-async function synthesizeSpeech(text) {
+// Voces por defecto según género
+const VOICE_MAP = {
+  femenino: 'XrExE9yKIg1WjnnlVkGX', // Matilda — mujer, español neutro → ANIMIX
+  masculino: 'pNInz6obpgDQGcFmaJgB', // Adam   — hombre, profundo      → ANIMAX
+};
+
+async function synthesizeSpeech(text, voiceId, gender) {
   if (!ELEVENLABS_KEY) throw new Error('ELEVENLABS_KEY no configurada');
-  // Limpiar markdown del texto
   const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').substring(0, 800);
+
+  // Configuración de voz robótica por género
+  const isMasc = gender === 'masculino';
+  const voiceSettings = isMasc
+    ? { stability: 0.85, similarity_boost: 0.45, style: 0.0, use_speaker_boost: false }  // ANIMAX: grave, estable, robótico
+    : { stability: 0.75, similarity_boost: 0.55, style: 0.05, use_speaker_boost: true };  // ANIMIX: claro, femenino, suave
+
+  const selectedVoice = voiceId || VOICE_MAP[gender] || VOICE_MAP.femenino;
+
   const body = JSON.stringify({
     text: clean,
     model_id: 'eleven_multilingual_v2',
-    voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.3, use_speaker_boost: true }
+    voice_settings: voiceSettings
   });
+
   return new Promise((resolve, reject) => {
     const opts = {
       hostname: 'api.elevenlabs.io',
-      path: `/v1/text-to-speech/${ELEVENLABS_VOICE}`,
+      path: `/v1/text-to-speech/${selectedVoice}`,
       method: 'POST',
       headers: {
         'xi-api-key': ELEVENLABS_KEY,
@@ -612,9 +625,9 @@ const server = http.createServer(async (req, res) => {
     req.on('data', c => body += c);
     req.on('end', async () => {
       try {
-        const { text } = JSON.parse(body);
+        const { text, voiceId, gender } = JSON.parse(body);
         if (!text) { res.writeHead(400); res.end('{"error":"sin texto"}'); return; }
-        const result = await synthesizeSpeech(text);
+        const result = await synthesizeSpeech(text, voiceId, gender || 'femenino');
         res.writeHead(200, {
           'Content-Type': result.contentType,
           'Content-Length': result.buffer.length,

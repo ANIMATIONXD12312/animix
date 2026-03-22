@@ -805,15 +805,24 @@ function toggleVoice(){
 }
 // ── VOZ SALIDA (TTS) ─────────────────────────────────────────────────────────
 var ttsEnabled=false;
-const ELEVENLABS_CONFIGURED = true; // se configura via variable de entorno en Railway
+const ELEVENLABS_CONFIGURED = true;
+
+// Voces ElevenLabs por género:
+// ANIMIX (femenino) → Rachel - voz femenina clara
+// ANIMAX (masculino) → Adam - voz masculina profunda
+const VOICE_IDS = {
+  femenino: 'XrExE9yKIg1WjnnlVkGX', // Matilda - mujer, neutro español
+  masculino: 'pNInz6obpgDQGcFmaJgB', // Adam - hombre, neutro
+};
 
 async function speakElevenLabs(text) {
   try {
     const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').substring(0,600);
+    const voiceId = VOICE_IDS[ai.gender] || VOICE_IDS.femenino;
     const res = await fetch('/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: clean })
+      body: JSON.stringify({ text: clean, voiceId: voiceId, gender: ai.gender })
     });
     if (!res.ok) throw new Error('TTS error ' + res.status);
     const blob = await res.blob();
@@ -827,18 +836,27 @@ async function speakElevenLabs(text) {
   }
 }
 
-function speak(text){
-  if(!ttsEnabled)return;
+function speakFallback(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
   const clean = text.replace(/\*\*/g,'').replace(/<[^>]+>/g,'').substring(0,300);
-  if(window.speechSynthesis){window.speechSynthesis.cancel();}
-  speakElevenLabs(clean).then(audio=>{
-    if(audio){audio.play();}
-    else{
-      if(!window.speechSynthesis)return;
-      var u=new SpeechSynthesisUtterance(clean);
-      u.lang='es-ES';u.rate=1.05;u.pitch=1.1;
-      window.speechSynthesis.speak(u);
-    }
+  const u = new SpeechSynthesisUtterance(clean);
+  u.lang = 'es-ES';
+  // Efecto robótico con Web Speech API
+  if (ai.gender === 'masculino') {
+    u.pitch = 0.4; u.rate = 0.88; // voz grave y lenta → ANIMAX
+  } else {
+    u.pitch = 1.6; u.rate = 1.05; // voz aguda y fluida → ANIMIX
+  }
+  window.speechSynthesis.speak(u);
+}
+
+function speak(text){
+  if(!ttsEnabled) return;
+  const clean = text.replace(/\*\*/g,'').replace(/<[^>]+>/g,'').substring(0,600);
+  speakElevenLabs(clean).then(audio => {
+    if (audio) { audio.play(); }
+    else { speakFallback(clean); }
   });
 }
 
@@ -990,7 +1008,7 @@ async function callAskAI(userText) {
     // También agregar al chat principal
     addBub('u', userText); addBub('ai', fmt(reply)); saveMemory();
 
-    // Reproducir con ElevenLabs
+    // Reproducir con ElevenLabs (voz según género)
     if (callCurrentAudio) { callCurrentAudio.pause(); callCurrentAudio = null; }
     setCallVad('speaking-out');
     const audio = await speakElevenLabs(reply);
