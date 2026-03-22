@@ -30,7 +30,7 @@ async function enhancePrompt(prompt) {
       headers: {
         'Authorization': `Bearer ${OR_TOKEN}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:3000',
+        'HTTP-Referer': 'https://animix-production-3488.up.railway.app',
         'X-Title': 'ANIMIX',
         'Content-Length': Buffer.byteLength(body),
       },
@@ -559,8 +559,7 @@ const server = http.createServer(async (req, res) => {
             openaiMessages.push({ role, content: text });
           } catch(e) {}
         });
-        // Asegurar que el último mensaje sea del user
-        if (!openaiMessages.length || openaiMessages[openaiMessages.length-1].role !== 'user') return;
+        // Asegurar que haya mensajes
 
         const orBody = JSON.stringify({
           model: 'openrouter/auto',
@@ -575,7 +574,7 @@ const server = http.createServer(async (req, res) => {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
-            'HTTP-Referer': 'http://localhost:3000',
+            'HTTP-Referer': 'https://animix-production-3488.up.railway.app',
             'X-Title': 'ANIMIX',
             'Content-Length': Buffer.byteLength(orBody),
           },
