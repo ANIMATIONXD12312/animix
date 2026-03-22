@@ -475,6 +475,106 @@ async function generateImage(prompt) {
   return { ok: false, error: 'No se pudo generar la imagen. Intentá de nuevo en un momento.' };
 }
 
+// ─── Motor de Voz: Groq Whisper (transcripción) ──────────────────────────────
+async function transcribeAudio(audioBuffer, mimeType) {
+  // Groq Whisper via multipart/form-data
+  const boundary = '----FormBoundary' + Math.random().toString(36).slice(2);
+  const filename = mimeType.includes('webm') ? 'audio.webm' : mimeType.includes('mp4') ? 'audio.mp4' : 'audio.wav';
+
+  const header = Buffer.from(
+    `--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
+    `Content-Type: ${mimeType}\r\n\r\n`
+  );
+  const modelPart = Buffer.from(
+    `\r\n--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="model"\r\n\r\n` +
+    `whisper-large-v3-turbo` +
+    `\r\n--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="language"\r\n\r\nes` +
+    `\r\n--${boundary}\r\n` +
+    `Content-Disposition: form-data; name="response_format"\r\n\r\njson` +
+    `\r\n--${boundary}--\r\n`
+  );
+
+  const body = Buffer.concat([header, audioBuffer, modelPart]);
+  const GROQ_KEY = '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';
+
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: 'api.groq.com',
+      path: '/openai/v1/audio/transcriptions',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_KEY}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': body.length,
+      },
+      timeout: 30000,
+    };
+    const req = https.request(opts, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString());
+          if (data.text) resolve(data.text.trim());
+          else reject(new Error(data.error?.message || 'Sin transcripción'));
+        } catch(e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout whisper')); });
+    req.write(body);
+    req.end();
+  });
+}
+
+// ─── Motor de Voz: ElevenLabs TTS ────────────────────────────────────────────
+const ELEVENLABS_KEY = process.env.ELEVENLABS_KEY || '';
+// Voice ID: "Rachel" en español neutro es una buena opción por defecto
+const ELEVENLABS_VOICE = process.env.ELEVENLABS_VOICE || 'XrExE9yKIg1WjnnlVkGX'; // Matilda (español neutro)
+
+async function synthesizeSpeech(text) {
+  if (!ELEVENLABS_KEY) throw new Error('ELEVENLABS_KEY no configurada');
+  // Limpiar markdown del texto
+  const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').substring(0, 800);
+  const body = JSON.stringify({
+    text: clean,
+    model_id: 'eleven_multilingual_v2',
+    voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.3, use_speaker_boost: true }
+  });
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: 'api.elevenlabs.io',
+      path: `/v1/text-to-speech/${ELEVENLABS_VOICE}`,
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg',
+        'Content-Length': Buffer.byteLength(body),
+      },
+      timeout: 30000,
+    };
+    const req = https.request(opts, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          resolve({ buffer: Buffer.concat(chunks), contentType: 'audio/mpeg' });
+        } else {
+          const err = Buffer.concat(chunks).toString().substring(0, 200);
+          reject(new Error(`ElevenLabs ${res.statusCode}: ${err}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout elevenlabs')); });
+    req.write(body); req.end();
+  });
+}
+
 // ─── Servidor HTTP ───────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   const urlObj = new URL(req.url, `http://localhost:${PORT}`);
@@ -483,6 +583,52 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  // /whisper → transcripción con Groq Whisper
+  if (urlObj.pathname === '/whisper' && req.method === 'POST') {
+    const chunks = [];
+    req.on('data', c => chunks.push(c));
+    req.on('end', async () => {
+      try {
+        const mimeType = req.headers['content-type'] || 'audio/webm';
+        const audioBuffer = Buffer.concat(chunks);
+        console.log(`[WHISPER] Recibido ${audioBuffer.length} bytes (${mimeType})`);
+        const text = await transcribeAudio(audioBuffer, mimeType);
+        console.log(`[WHISPER] Transcripción: "${text}"`);
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ text }));
+      } catch(e) {
+        console.log(`[WHISPER] Error: ${e.message}`);
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // /tts → síntesis de voz con ElevenLabs
+  if (urlObj.pathname === '/tts' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { text } = JSON.parse(body);
+        if (!text) { res.writeHead(400); res.end('{"error":"sin texto"}'); return; }
+        const result = await synthesizeSpeech(text);
+        res.writeHead(200, {
+          'Content-Type': result.contentType,
+          'Content-Length': result.buffer.length,
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(result.buffer);
+      } catch(e) {
+        console.log(`[TTS] Error: ${e.message}`);
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
 
   // /genimg?p=prompt
   if (urlObj.pathname === '/genimg') {
