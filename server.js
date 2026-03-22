@@ -541,7 +541,7 @@ const server = http.createServer(async (req, res) => {
     req.on('end', () => {
       try {
         const parsed = JSON.parse(body);
-        const apiKey = req.headers['x-api-key'] || '';
+        const apiKey = OR_TOKEN;
         const systemText = parsed.system || '';
         const messages = parsed.messages || [];
 
