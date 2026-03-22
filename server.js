@@ -549,22 +549,23 @@ const server = http.createServer(async (req, res) => {
         messages.forEach(m => {
           try {
             const role = m.role === 'model' ? 'assistant' : 'user';
-            // Handle content with images
+            // Handle content with images (array format)
             if (Array.isArray(m.content)) {
               const parts = [];
               m.content.forEach(p => {
-                if (p.type === 'text' && p.text) parts.push({ type: 'text', text: p.text });
+                if (p.type === 'text' && p.text) parts.push({ type: 'text', text: String(p.text) });
                 else if (p.type === 'image' && p.source) parts.push({ type: 'image_url', image_url: { url: `data:${p.source.media_type};base64,${p.source.data}` } });
               });
               if (parts.length) openaiMessages.push({ role, content: parts });
             } else {
               let text = '';
-              if (m.parts) text = m.parts.map(p => p.text || '').join('');
+              if (m.parts && Array.isArray(m.parts)) text = m.parts.map(p => String(p.text || '')).join('');
               else if (typeof m.content === 'string') text = m.content;
-              if (!text.trim()) return;
+              else if (m.content) text = String(m.content);
+              if (!text || !text.trim()) return;
               openaiMessages.push({ role, content: text });
             }
-          } catch(e) {}
+          } catch(e) { console.log('Error parsing message:', e.message); }
         });
 
         const groqBody = JSON.stringify({
