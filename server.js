@@ -9,7 +9,7 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─── Motor 2: Hugging Face Inference API ────────────────────────────────────
 const HF_TOKEN = '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';
-const OR_TOKEN = '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';
+const OR_TOKEN = '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';
 
 // Mejorar prompt con IA antes de generar imagen
 async function enhancePrompt(prompt) {
