@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ANIMIX — ANIMATION XD</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--bg:#07080f;--s1:#0c0e1a;--s2:#121422;--s3:#181b2e;--bd:#1f2238;--bd2:#2d3054;--tx:#f0f2ff;--t2:#8890bb;--t3:#3a3f60;--r:#ff3a5c;--c:#00d4ff;--gr:linear-gradient(135deg,#ff3a5c,#00d4ff);--sf:'DM Sans',sans-serif;--dp:'Syne',sans-serif;--mo:'JetBrains Mono',monospace;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--tx);font-family:var(--sf);display:flex;flex-direction:column;}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 70% 50% at 15% 10%,rgba(255,58,92,.055),transparent),radial-gradient(ellipse 60% 70% at 85% 90%,rgba(0,212,255,.04),transparent);pointer-events:none;z-index:0;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px;}
+.topbar{position:relative;z-index:10;display:flex;align-items:center;gap:12px;padding:11px 18px;background:rgba(12,14,26,.9);backdrop-filter:blur(24px);border-bottom:1px solid var(--bd);flex-shrink:0;}
+.t-logo{width:34px;height:34px;border-radius:10px;background:var(--gr);display:grid;place-items:center;font-size:17px;flex-shrink:0;}
+.t-name{font-family:var(--dp);font-size:19px;font-weight:800;background:var(--gr);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.t-by{font-size:9px;color:var(--t3);font-family:var(--mo);letter-spacing:2px;}
+.t-status{display:flex;align-items:center;gap:6px;margin-left:auto;}
+.sdot{width:7px;height:7px;border-radius:50%;background:#00ff88;box-shadow:0 0 7px #00ff88;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+.stxt{font-size:11px;color:var(--t2);font-family:var(--mo);}
+.t-btns{display:flex;gap:5px;}
+.tbtn{background:transparent;border:1px solid var(--bd);color:var(--t2);width:29px;height:29px;border-radius:7px;cursor:pointer;display:grid;place-items:center;font-size:13px;transition:all .15s;}
+.tbtn:hover{border-color:var(--c);color:var(--c);}
+.layout{display:flex;flex:1;overflow:hidden;position:relative;z-index:1;}
+.sb{width:238px;background:rgba(12,14,26,.7);backdrop-filter:blur(20px);border-right:1px solid var(--bd);display:flex;flex-direction:column;flex-shrink:0;transition:width .3s;overflow:hidden;}
+.sb.closed{width:0;}
+.sb-inner{width:238px;display:flex;flex-direction:column;height:100%;}
+.sb-pad{padding:13px 11px;}
+.new-btn{width:100%;padding:9px;background:var(--gr);border:none;color:#fff;border-radius:10px;font-size:13px;font-family:var(--sf);font-weight:600;cursor:pointer;transition:opacity .2s;}
+.new-btn:hover{opacity:.85;}
+.sb-sec{padding:9px 13px 4px;font-size:9px;color:var(--t3);font-family:var(--mo);letter-spacing:2px;}
+.h-list{flex:1;overflow-y:auto;padding:0 7px 8px;}
+.hi{padding:7px 9px;border-radius:8px;cursor:pointer;font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;border:1px solid transparent;transition:all .15s;}
+.hi:hover,.hi.on{background:var(--s2);border-color:var(--bd);color:var(--tx);}
+.hi.on{color:var(--c);}
+.sb-bot{padding:11px;border-top:1px solid var(--bd);display:flex;flex-direction:column;gap:5px;}
+.sb-btn{background:transparent;border:1px solid var(--bd);color:var(--t2);padding:7px 10px;border-radius:9px;font-size:12px;font-family:var(--sf);cursor:pointer;text-align:left;display:flex;align-items:center;gap:7px;transition:all .15s;}
+.sb-btn:hover{border-color:var(--bd2);color:var(--tx);}
+.sb-credit{padding:7px 11px 11px;font-size:9px;color:var(--t3);font-family:var(--mo);text-align:center;}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:30px;text-align:center;}
+.w-orb{width:88px;height:88px;border-radius:28px;background:var(--gr);display:grid;place-items:center;font-size:42px;}
+.w-title{font-family:var(--dp);font-size:30px;font-weight:800;background:var(--gr);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.w-sub{font-size:13px;color:var(--t2);max-width:400px;line-height:1.8;}
+.w-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;max-width:400px;width:100%;}
+.w-card{background:var(--s1);border:1px solid var(--bd);border-radius:13px;padding:13px;cursor:pointer;transition:all .2s;text-align:left;}
+.w-card:hover{border-color:var(--r);transform:translateY(-2px);}
+.wc-i{font-size:22px;margin-bottom:6px;}
+.wc-t{font-size:13px;font-weight:600;margin-bottom:2px;}
+.wc-s{font-size:11px;color:var(--t2);}
+.w-chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:480px;}
+.wchip{background:var(--s2);border:1px solid var(--bd);color:var(--t2);font-size:11.5px;padding:6px 13px;border-radius:20px;cursor:pointer;transition:all .2s;}
+.wchip:hover{border-color:var(--c);color:var(--c);}
+.msgs{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px;}
+.msg{display:flex;gap:9px;align-items:flex-start;animation:msgIn .2s ease;}
+@keyframes msgIn{from{opacity:0;transform:translateY(7px);}to{opacity:1;}}
+.msg.u{flex-direction:row-reverse;}
+.mav{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:13px;}
+.msg.ai .mav{background:var(--gr);}
+.msg.u .mav{background:var(--s3);border:1px solid var(--bd2);font-size:11px;}
+.mb{max-width:80%;display:flex;flex-direction:column;gap:3px;}
+.mn{font-size:10px;color:var(--t3);font-family:var(--mo);padding:0 3px;}
+.msg.u .mn{text-align:right;}
+.bub{padding:11px 15px;border-radius:16px;font-size:14px;line-height:1.8;word-break:break-word;}
+.msg.ai .bub{background:var(--s1);border:1px solid var(--bd);border-bottom-left-radius:4px;}
+.msg.u .bub{background:var(--s3);border:1px solid var(--bd2);border-bottom-right-radius:4px;}
+.bub strong{background:var(--gr);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-weight:600;}
+.bub code{background:var(--bg);border:1px solid var(--bd);padding:2px 5px;border-radius:5px;font-family:var(--mo);font-size:11.5px;color:var(--c);}
+.bub pre{background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:11px 13px;overflow-x:auto;margin:7px 0;}
+.bub pre code{background:none;border:none;padding:0;font-size:12px;color:#c9d1d9;line-height:1.7;}
+.bub ul,.bub ol{padding-left:18px;margin:5px 0;}
+.bub li{margin:3px 0;}
+.bub h3{color:var(--c);font-size:14px;margin:7px 0 3px;font-family:var(--dp);}
+.typing{display:flex;gap:5px;align-items:center;padding:3px 0;}
+.typing span{width:8px;height:8px;border-radius:50%;animation:tb 1.2s infinite;}
+.typing span:nth-child(1){background:var(--r);}
+.typing span:nth-child(2){background:linear-gradient(var(--r),var(--c));animation-delay:.2s;}
+.typing span:nth-child(3){background:var(--c);animation-delay:.4s;}
+@keyframes tb{0%,60%,100%{transform:translateY(0);opacity:.3;}30%{transform:translateY(-6px);opacity:1;}}
+.gen-wrap{margin-top:8px;}
+.gen-img{max-width:100%;border-radius:12px;border:1px solid var(--bd2);display:block;cursor:zoom-in;transition:transform .2s;}
+.gen-img:hover{transform:scale(1.01);}
+.in-img{max-width:180px;border-radius:9px;border:1px solid var(--bd2);margin-top:5px;display:block;cursor:zoom-in;}
+.fchip{display:inline-flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:4px 9px;font-size:11px;color:var(--t2);margin-top:5px;font-family:var(--mo);}
+.media-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.mbtn{background:var(--s2);border:1px solid var(--bd);color:var(--t2);font-size:11px;padding:5px 11px;border-radius:20px;cursor:pointer;font-family:var(--sf);transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;}
+.mbtn:hover{border-color:var(--c);color:var(--c);}
+.gen-label{font-size:11px;color:var(--t2);margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.gen-label span{background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:2px 8px;font-family:var(--mo);font-size:10px;color:var(--c);}
+.gif-wrap{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--bd2);}
+.gif-badge{position:absolute;bottom:7px;right:8px;background:rgba(0,0,0,.7);border-radius:5px;padding:2px 8px;font-size:10px;color:#fff;font-family:var(--mo);}
+.gif-frame{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+.genbub{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+.gbar{width:100%;height:3px;background:var(--bd);border-radius:2px;overflow:hidden;}
+.gfill{height:100%;background:var(--gr);border-radius:2px;animation:gani 2.5s ease-in-out infinite;}
+@keyframes gani{0%{width:3%;}65%{width:82%;}100%{width:90%;}}
+.gtxt{font-size:11px;color:var(--t3);font-family:var(--mo);}
+.inp-zone{flex-shrink:0;padding:10px 16px 13px;background:rgba(12,14,26,.85);backdrop-filter:blur(24px);border-top:1px solid var(--bd);}
+.att-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:7px;}
+.at-thumb{position:relative;}
+.at-thumb img{width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid var(--bd);}
+.at-rm{position:absolute;top:-5px;right:-5px;background:var(--r);border:none;color:#fff;width:15px;height:15px;border-radius:50%;font-size:9px;cursor:pointer;display:grid;place-items:center;}
+.at-file{display:flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:4px 9px;font-size:11px;color:var(--t2);font-family:var(--mo);}
+.inp-box{display:flex;align-items:flex-end;gap:7px;background:var(--s2);border:1px solid var(--bd);border-radius:16px;padding:5px 7px;transition:border-color .2s;position:relative;}
+.inp-box:focus-within{border-color:var(--c);}
+.plus-wrap{position:relative;flex-shrink:0;}
+.plus{width:33px;height:33px;border-radius:9px;background:transparent;border:1px solid var(--bd);color:var(--t2);cursor:pointer;display:grid;place-items:center;font-size:19px;line-height:1;transition:all .2s;}
+.plus:hover,.plus.open{border-color:var(--r);color:var(--r);}
+.pmenu{position:absolute;bottom:calc(100% + 10px);left:0;background:var(--s1);border:1px solid var(--bd2);border-radius:15px;padding:7px;min-width:210px;box-shadow:0 -10px 40px rgba(0,0,0,.5);z-index:60;animation:pup .16s ease;display:flex;flex-direction:column;gap:2px;}
+@keyframes pup{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
+.pm{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;cursor:pointer;border:none;background:transparent;color:var(--tx);font-family:var(--sf);font-size:13px;width:100%;text-align:left;transition:background .15s;}
+.pm:hover{background:var(--s2);}
+.pm .pi{font-size:17px;width:24px;text-align:center;flex-shrink:0;}
+.pm .pt{font-weight:500;}
+.pm .ps{font-size:10px;color:var(--t2);display:block;}
+.pm-sep{border:none;border-top:1px solid var(--bd);margin:3px 0;}
+.cinp{flex:1;background:transparent;border:none;color:var(--tx);font-size:14px;padding:7px 5px;outline:none;resize:none;font-family:var(--sf);line-height:1.6;max-height:120px;overflow-y:auto;}
+.cinp::placeholder{color:var(--t3);}
+.send{width:35px;height:35px;border-radius:10px;background:var(--gr);border:none;color:#fff;cursor:pointer;display:grid;place-items:center;font-size:16px;flex-shrink:0;transition:all .2s;}
+.send:hover{opacity:.85;transform:translateY(-1px);}
+.send:disabled{background:var(--s3);color:var(--t3);cursor:not-allowed;transform:none;}
+.inp-hint{font-size:10px;color:var(--t3);text-align:center;margin-top:6px;font-family:var(--mo);}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.85);display:grid;place-items:center;z-index:100;backdrop-filter:blur(8px);}
+.modal{background:var(--s1);border:1px solid var(--bd2);border-radius:22px;padding:24px;width:90%;max-width:460px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+.mtitle{font-family:var(--dp);font-size:17px;font-weight:700;background:var(--gr);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.mf label{font-size:10px;color:var(--t2);font-family:var(--mo);display:block;margin-bottom:5px;letter-spacing:.8px;}
+.mf input,.mf textarea{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:10px;color:var(--tx);font-size:13px;padding:9px 12px;outline:none;font-family:var(--sf);transition:border-color .2s;}
+.mf input:focus,.mf textarea:focus{border-color:var(--c);}
+.mf textarea{resize:none;line-height:1.6;}
+.mrow{display:flex;gap:7px;}
+.cbtn{flex:1;background:var(--s2);border:1px solid var(--bd);color:var(--t2);padding:8px;border-radius:9px;cursor:pointer;font-size:12px;font-family:var(--sf);text-align:center;transition:all .15s;}
+.cbtn.on{border-color:var(--c);color:var(--c);background:rgba(0,212,255,.07);}
+.cdots{display:flex;gap:8px;align-items:center;}
+.cdot{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:all .2s;}
+.cdot.on{border-color:#fff;transform:scale(1.3);}
+.mact{display:flex;gap:8px;justify-content:flex-end;}
+.bcx{background:transparent;border:1px solid var(--bd);color:var(--t2);padding:7px 15px;border-radius:9px;cursor:pointer;font-size:12px;font-family:var(--sf);}
+.bsv{background:var(--gr);border:none;color:#fff;padding:7px 18px;border-radius:9px;cursor:pointer;font-size:13px;font-family:var(--sf);font-weight:600;}
+.msep{border:none;border-top:1px solid var(--bd);}
+.ob{position:fixed;inset:0;background:rgba(7,8,15,.97);z-index:500;display:grid;place-items:center;}
+.ob-card{background:var(--s1);border:1px solid var(--bd2);border-radius:26px;padding:36px;max-width:420px;width:92%;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center;}
+.ob-logo{width:78px;height:78px;border-radius:24px;background:var(--gr);display:grid;place-items:center;font-size:36px;}
+.ob-title{font-family:var(--dp);font-size:26px;font-weight:800;background:var(--gr);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.ob-sub{font-size:13px;color:var(--t2);line-height:1.75;}
+.ob-f{width:100%;text-align:left;}
+.ob-f label{font-size:10px;color:var(--t2);font-family:var(--mo);letter-spacing:1px;display:block;margin-bottom:5px;}
+.ob-f input{width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:10px;color:var(--tx);font-size:14px;padding:10px 13px;outline:none;font-family:var(--sf);transition:border-color .2s;}
+.ob-f input:focus{border-color:var(--c);}
+.ob-gs{display:flex;gap:7px;width:100%;}
+.ob-g{flex:1;background:var(--s2);border:1px solid var(--bd);color:var(--t2);padding:10px 7px;border-radius:11px;cursor:pointer;font-size:12px;font-family:var(--sf);text-align:center;transition:all .15s;}
+.ob-g.on{border-color:var(--c);color:var(--c);background:rgba(0,212,255,.07);}
+.ob-go{width:100%;padding:13px;background:var(--gr);border:none;color:#fff;border-radius:12px;font-size:15px;font-family:var(--dp);font-weight:700;cursor:pointer;transition:opacity .2s;}
+.ob-go:hover{opacity:.88;}
+.ob-note{font-size:10px;color:var(--t3);font-family:var(--mo);}
+.zoom-ov{position:fixed;inset:0;background:rgba(0,0,0,.95);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;z-index:200;}
+.zoom-ov img{max-width:94vw;max-height:83vh;border-radius:12px;}
+.zoom-bar{display:flex;gap:9px;}
+.zbtn{background:var(--s2);border:1px solid var(--bd2);color:var(--tx);padding:7px 15px;border-radius:9px;cursor:pointer;font-size:12px;font-family:var(--sf);}
+.zbtn:hover{border-color:var(--c);color:var(--c);}
+.tabs{display:flex;gap:3px;padding:9px 15px 0;background:var(--s1);border-bottom:1px solid var(--bd);flex-shrink:0;}
+.tab{padding:7px 13px;font-size:12px;cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;color:var(--t2);transition:all .15s;font-family:var(--sf);}
+.tab.on{background:var(--bg);border-color:var(--bd);color:var(--tx);}
+.pane{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+.vid-section{padding:14px 16px;display:flex;flex-direction:column;gap:10px;}
+.vid-group{background:var(--s1);border:1px solid var(--bd);border-radius:13px;padding:14px;display:flex;flex-direction:column;gap:7px;}
+.vid-group h3{font-family:var(--dp);font-size:14px;font-weight:700;margin-bottom:2px;}
+.vlink{display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--bg);border:1px solid var(--bd);border-radius:10px;text-decoration:none;color:var(--tx);font-size:12px;transition:all .15s;}
+.vlink:hover{border-color:var(--c);transform:translateX(3px);}
+.vi{font-size:19px;width:26px;flex-shrink:0;}
+.vt{font-weight:500;font-size:13px;}
+.vs{font-size:11px;color:var(--t2);}
+.vbadge{margin-left:auto;font-size:9px;padding:2px 8px;border-radius:10px;font-family:var(--mo);flex-shrink:0;}
+.vbadge.free{background:rgba(0,255,136,.1);color:#00ff88;border:1px solid rgba(0,255,136,.25);}
+.vbadge.paid{background:rgba(255,191,36,.1);color:#fbbf24;border:1px solid rgba(255,191,36,.25);}
+.gal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:8px;padding:12px;}
+.gal-item{border-radius:10px;overflow:hidden;border:1px solid var(--bd);cursor:pointer;transition:all .2s;position:relative;aspect-ratio:1;}
+.gal-item:hover{border-color:var(--bd2);transform:scale(1.02);}
+.gal-item img{width:100%;height:100%;object-fit:cover;display:block;}
+.gal-lbl{position:absolute;bottom:0;left:0;right:0;padding:5px 7px;font-size:10px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.75));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+</style>
+</head>
+<body>
+
+<div class="ob" id="ob">
+  <div class="ob-card" style="position:relative;">
+    <div class="ob-logo">✦</div>
+    <div class="ob-title" id="ob-ainame">Hola, soy ANIMIX</div>
+    <div class="ob-sub">La IA de ANIMATION XD Productions.<br>Contame sobre vos para personalizar tu experiencia.</div>
+    <div class="ob-f"><label>TU NOMBRE</label><input id="ob-name" type="text" placeholder="¿Cómo te llamás?" maxlength="24" autofocus></div>
+    <div class="ob-f"><label>TU GÉNERO</label>
+      <div class="ob-gs">
+        <button class="ob-g" id="obg-m" onclick="setObG('masculino')">👨 Masculino</button>
+        <button class="ob-g on" id="obg-f" onclick="setObG('femenino')">👩 Femenino</button>
+        <button class="ob-g" id="obg-n" onclick="setObG('neutro')">⚡ No especificar</button>
+      </div>
+    </div>
+    <button class="ob-go" onclick="startApp()">Comenzar →</button>
+    <div class="ob-note">ANIMATION XD Productions · v4.0</div>
+    <div style="position:absolute;bottom:12px;right:12px;">
+      <span id="creator-lock" onclick="toggleCreatorCode()" style="font-size:11px;color:var(--t3);cursor:pointer;user-select:none;">🔒</span>
+      <div id="creator-input" style="display:none;margin-top:4px;">
+        <input id="creator-code" type="password" maxlength="20" placeholder="Código" style="width:110px;background:var(--bg);border:1px solid var(--bd);border-radius:7px;color:var(--tx);font-size:11px;padding:4px 8px;outline:none;font-family:var(--mo);" onkeydown="if(event.key==='Enter')checkCreatorCode()">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="topbar">
+  <button class="tbtn" onclick="document.getElementById('sb').classList.toggle('closed')">☰</button>
+  <div class="t-logo">✦</div>
+  <div><div class="t-name" id="tname">ANIMIX</div><div class="t-by">ANIMATION XD PRODUCTIONS</div></div>
+  <div class="t-status"><div class="sdot"></div><div class="stxt" id="stxt">en línea</div></div>
+  <div class="t-btns">
+    <button class="tbtn" onclick="openSettings()">⚙</button>
+    <button class="tbtn" onclick="toggleTheme()" id="tbtheme">☾</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sb" id="sb">
+    <div class="sb-inner">
+      <div class="sb-pad"><button class="new-btn" onclick="newChat()">＋ Nueva conversación</button></div>
+      <div class="sb-sec">HISTORIAL</div>
+      <div class="h-list" id="hlist"></div>
+      <div class="sb-bot">
+        <button class="sb-btn" onclick="openSettings()">⚙ &nbsp;Personalizar IA</button>
+        <button class="sb-btn" onclick="exportChat()">⬇ &nbsp;Exportar chat</button>
+      </div>
+      <div class="sb-credit" id="sb-credit">ANIMIX · ANIMATION XD v4.0</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="tabs">
+      <button class="tab on" onclick="setTab('chat')" id="tab-chat">💬 Chat</button>
+      <button class="tab" onclick="setTab('vid')" id="tab-vid">🎬 Video IA <span style="font-size:8px;background:var(--r);color:#fff;padding:1px 5px;border-radius:6px;margin-left:3px;">PRONTO</span></button>
+      <button class="tab" onclick="setTab('gal')" id="tab-gal">🖼 Galería</button>
+    </div>
+
+    <div class="pane" id="pane-chat" style="display:flex;">
+      <div class="welcome" id="welcome">
+        <div class="w-orb">✦</div>
+        <div class="w-title" id="wtitle">Hola, soy ANIMIX</div>
+        <div class="w-sub">Podés pedirme que genere imágenes, GIFs, analice fotos y responda cualquier pregunta — todo desde el chat.</div>
+        <div class="w-grid">
+          <div class="w-card" onclick="qs('Explicame la física cuántica de forma simple')"><div class="wc-i">⚛️</div><div class="wc-t">Ciencias</div><div class="wc-s">Explicaciones profundas</div></div>
+          <div class="w-card" onclick="addBub('ai',fmt('Generación de imágenes **próximamente** disponible. ✦'));showMsgs();"><div class="wc-i">🎨</div><div class="wc-t">Generar imagen</div><div class="wc-s">Describí lo que querés</div></div>
+          <div class="w-card" onclick="addBub('ai',fmt('Generación de GIFs **próximamente** disponible. ✦'));showMsgs();"><div class="wc-i">✨</div><div class="wc-t">Crear GIF</div><div class="wc-s">Animaciones con IA</div></div>
+          <div class="w-card" onclick="qs('Ayudame a aprender Python desde cero')"><div class="wc-i">💻</div><div class="wc-t">Programación</div><div class="wc-s">Código y proyectos</div></div>
+        </div>
+        <div class="w-chips">
+          <span class="wchip" onclick="qs('Haceme un chiste bueno')">😂 Chiste</span>
+          <span class="wchip" onclick="qs('Escribime un poema épico sobre el universo')">✍️ Poema</span>
+          <span class="wchip" onclick="qs('¿Qué podés hacer exactamente?')">🤔 ¿Qué podés hacer?</span>
+          <span class="wchip" onclick="qs('Dame ideas para un negocio online')">💡 Ideas</span>
+        </div>
+      </div>
+      <div class="msgs" id="msgs" style="display:none;"></div>
+    </div>
+
+    <div class="pane" id="pane-vid" style="display:none;">
+      <div class="vid-section">
+        <div class="vid-group">
+          <h3>🖼 Imagen → Video</h3>
+          <a href="https://app.runwayml.com" target="_blank" class="vlink"><div class="vi">🛤</div><div><div class="vt">Runway Gen-3</div><div class="vs">El más realista. 125 créditos gratis</div></div><span class="vbadge free">GRATIS</span></a>
+          <a href="https://dream-machine.lumalabs.ai" target="_blank" class="vlink"><div class="vi">🌙</div><div><div class="vt">Luma Dream Machine</div><div class="vs">Imagen + texto → video cinematográfico</div></div><span class="vbadge free">GRATIS</span></a>
+          <a href="https://klingai.com" target="_blank" class="vlink"><div class="vi">🎭</div><div><div class="vt">Kling AI 1.5</div><div class="vs">Ultra realista. Como Sora pero gratis</div></div><span class="vbadge free">GRATIS</span></a>
+          <a href="https://pika.art" target="_blank" class="vlink"><div class="vi">⚡</div><div><div class="vt">Pika 2.0</div><div class="vs">Texto/imagen a video. Muy fácil</div></div><span class="vbadge free">GRATIS</span></a>
+          <a href="https://sora.com" target="_blank" class="vlink"><div class="vi">🌐</div><div><div class="vt">Sora (OpenAI)</div><div class="vs">El original. Videos hasta 20 segundos</div></div><span class="vbadge paid">PAGO</span></a>
+        </div>
+        <div class="vid-group">
+          <h3>💡 Prompt perfecto para video</h3>
+          <p style="font-size:12px;color:var(--t2);margin-bottom:4px;">Describí tu idea y ANIMIX te genera el prompt optimizado.</p>
+          <textarea id="vid-idea" placeholder="Ej: Un astronauta en Marte al atardecer..." rows="3" style="width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:10px;color:var(--tx);font-size:13px;padding:9px;outline:none;resize:none;font-family:var(--sf);line-height:1.6;transition:border-color .2s;"></textarea>
+          <button onclick="doVidPrompt()" style="background:var(--gr);border:none;color:#fff;padding:9px;border-radius:9px;font-size:13px;font-family:var(--sf);font-weight:600;cursor:pointer;width:100%;margin-top:4px;">✦ Generarme el prompt perfecto</button>
+          <div id="vid-res" style="font-size:13px;line-height:1.8;color:var(--t2);margin-top:4px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-gal" style="display:none;">
+      <div id="gal-inner" style="padding:12px;">
+        <div style="color:var(--t3);text-align:center;padding:60px 20px;font-size:14px;">Todavía no generaste nada.<br><br>Pedile a la IA que genere una imagen o GIF desde el chat.</div>
+      </div>
+    </div>
+
+    <div class="inp-zone">
+      <div class="att-row" id="att-row"></div>
+      <div class="inp-box">
+        <div class="plus-wrap">
+          <button class="plus" id="plusbtn" onclick="togglePlus()">＋</button>
+          <div class="pmenu" id="pmenu" style="display:none;">
+            <button class="pm" onclick="pickFile('image/*')"><span class="pi">🖼</span><div><div class="pt">Subir imagen</div><span class="ps">Analizar o usar como referencia</span></div></button>
+            <button class="pm" onclick="pickFile('.pdf,.txt,.md,.js,.py,.html,.css,.json,.csv,.xml')"><span class="pi">📄</span><div><div class="pt">Subir documento</div><span class="ps">PDF, código, texto, CSV...</span></div></button>
+            <hr class="pm-sep">
+            <button class="pm" onclick="injectP('Generame una imagen de ')"><span class="pi">🎨</span><div><div class="pt">Generar imagen</div><span class="ps">Describí lo que querés ver</span></div></button>
+            <button class="pm" onclick="injectP('Creame un GIF animado de ')"><span class="pi">✨</span><div><div class="pt">Crear GIF animado</div><span class="ps">Describí la animación</span></div></button>
+            <button class="pm" onclick="closePlus();setTab('vid')"><span class="pi">🎬</span><div><div class="pt">Generadores de video</div><span class="ps">Runway, Kling, Pika, Luma...</span></div></button>
+            <hr class="pm-sep">
+            <button class="pm" onclick="closePlus();openSettings()"><span class="pi">⚙</span><div><div class="pt">Personalizar IA</div><span class="ps">Nombre, género, color</span></div></button>
+          </div>
+        </div>
+        <input type="file" id="finput" style="display:none" multiple onchange="handleFiles(this)">
+        <textarea class="cinp" id="cinp" placeholder="Escribí tu mensaje... pedile imágenes, GIFs, preguntas..." rows="1"
+          oninput="autoR(this)"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"></textarea>
+        <button class="send" id="sendbtn" onclick="sendMsg()">➤</button>
+      </div>
+      <div class="inp-hint">Enter enviar · Shift+Enter nueva línea · ＋ para más opciones</div>
+    </div>
+  </div>
+</div>
+
+<div class="ov" id="smod" style="display:none;">
+  <div class="modal">
+    <div class="mtitle">⚙ Personalizar IA</div>
+    <div class="mf"><label>NOMBRE</label><input type="text" id="s-nm" maxlength="20" placeholder="ANIMIX / ANIMAX"></div>
+    <div class="mf"><label>GÉNERO</label>
+      <div class="mrow">
+        <button class="cbtn on" id="sg-f" onclick="setSG('f')">👩 Femenina</button>
+        <button class="cbtn" id="sg-m" onclick="setSG('m')">👨 Masculino</button>
+        <button class="cbtn" id="sg-n" onclick="setSG('n')">🤖 Neutral</button>
+      </div>
+    </div>
+    <div class="mf"><label>COLOR</label>
+      <div class="cdots">
+        <div class="cdot on" id="cd0" style="background:linear-gradient(135deg,#ff3a5c,#00d4ff)" onclick="setCol(0)"></div>
+        <div class="cdot" id="cd1" style="background:linear-gradient(135deg,#8b5cf6,#f472b6)" onclick="setCol(1)"></div>
+        <div class="cdot" id="cd2" style="background:linear-gradient(135deg,#10b981,#34d399)" onclick="setCol(2)"></div>
+        <div class="cdot" id="cd3" style="background:linear-gradient(135deg,#f97316,#fbbf24)" onclick="setCol(3)"></div>
+        <div class="cdot" id="cd4" style="background:linear-gradient(135deg,#3b82f6,#06b6d4)" onclick="setCol(4)"></div>
+      </div>
+    </div>
+    <div class="mf"><label>PERSONALIDAD EXTRA</label><textarea id="s-per" rows="3" placeholder="Ej: Especialízate en arte. Sé más formal."></textarea></div>
+    <hr class="msep">
+    <div class="mact">
+      <button class="bcx" onclick="document.getElementById('smod').style.display='none'">Cancelar</button>
+      <button class="bsv" onclick="saveSettings()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="zoom-ov" id="zov" style="display:none;" onclick="if(event.target===this)closeZoom()">
+  <img id="zimg" src="">
+  <div class="zoom-bar">
+    <button class="zbtn" onclick="dlZoom()">⬇ Descargar</button>
+    <button class="zbtn" onclick="closeZoom()">✕ Cerrar</button>
+  </div>
+</div>
+
+<script>
+const AK='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';
+const PALETTES=[
+  {gr:'linear-gradient(135deg,#ff3a5c,#00d4ff)',r:'#ff3a5c',c:'#00d4ff'},
+  {gr:'linear-gradient(135deg,#8b5cf6,#f472b6)',r:'#8b5cf6',c:'#f472b6'},
+  {gr:'linear-gradient(135deg,#10b981,#34d399)',r:'#10b981',c:'#34d399'},
+  {gr:'linear-gradient(135deg,#f97316,#fbbf24)',r:'#f97316',c:'#fbbf24'},
+  {gr:'linear-gradient(135deg,#3b82f6,#06b6d4)',r:'#3b82f6',c:'#06b6d4'},
+];
+
+let user={name:'',gender:'femenino'};
+let creatorMode=false;
+// Código dividido para no ser obvio
+var _c1='Xk9m';var _c2='R3vQ';var _c3='8nL2';var _c4='pT7w';
+function _ck(){return _c1+_c2+_c3+_c4;}
+function toggleCreatorCode(){var d=document.getElementById('creator-input');d.style.display=d.style.display==='none'?'block':'none';if(d.style.display==='block')document.getElementById('creator-code').focus();}
+function checkCreatorCode(){
+  var input=document.getElementById('creator-code').value;
+  var campo=document.getElementById('creator-code');
+  if(input===_ck()){
+    creatorMode=true;
+    document.getElementById('creator-lock').textContent='🔓';
+    document.getElementById('creator-input').style.display='none';
+    campo.value='';
+    campo.style.borderColor='';
+    document.getElementById('ob-name').placeholder='¿Cómo te llamás? (Modo Creador ✓)';
+  } else {
+    campo.style.borderColor='var(--r)';
+    campo.style.boxShadow='0 0 6px rgba(255,58,92,0.4)';
+    setTimeout(function(){
+      campo.style.borderColor='';
+      campo.style.boxShadow='';
+    },1500);
+  }
+}
+let ai={name:'ANIMIX',gender:'femenino',color:0,persona:''};
+let history=[],attach=[],chats=[],gallery=[];
+let busy=false,light=false,plusOpen=false,sSG='f',sCol=0,zSrc='';
+
+// IMAGE GENERATION — via proxy local (server.js)
+async function genImg(prompt,w,h){
+  var url='http://localhost:3000/genimg?p='+encodeURIComponent(prompt);
+  var resp=await fetch(url,{signal:AbortSignal.timeout(120000)});
+  if(!resp.ok){
+    var err=await resp.json().catch(function(){return{error:'Error desconocido'};});
+    throw new Error(err.error||'No se pudo generar la imagen');
+  }
+  var blob=await resp.blob();
+  return URL.createObjectURL(blob);
+}
+
+const MOTION=['frame 1 starting pose still','frame 2 very slight motion beginning','frame 3 motion building','frame 4 quarter way through smooth','frame 5 halfway fluid motion','frame 6 peak of motion','frame 7 three quarters smooth','frame 8 motion slowing','frame 9 near end looping back','frame 10 almost complete loop','frame 11 returning to start','frame 12 seamless loop complete'];
+
+async function genGif(prompt,frames,speed,w,h){
+  frames=frames||8;speed=speed||0.38;w=w||640;h=h||640;
+  var seed=Math.floor(Math.random()*99999);
+  var urls=new Array(frames);
+  var jobs=[];
+  for(var i=0;i<frames;i++){
+    (function(idx){
+      var phase=MOTION[Math.floor(idx/frames*MOTION.length)]||MOTION[0];
+      var fp=prompt+', smooth loop animation frame '+(idx+1)+' of '+frames+', '+phase+', consistent style';
+      jobs.push(genImg(fp,w,h).then(function(u){urls[idx]=u;}).catch(function(){}));
+    })(i);
+  }
+  await Promise.allSettled(jobs);
+  var valid=urls.filter(Boolean);
+  if(valid.length<2)throw new Error('No se generaron suficientes frames. Intentá de nuevo.');
+  return valid;
+}
+
+// INTENT DETECTION
+var IMG_RE=/genera[mr]?\s+(una?\s+)?(imagen|foto|ilustración|dibujo|arte|pintura|diseño|poster|wallpaper|portada)|cre[aá]\s+(una?\s+)?(imagen|foto)|dibuj[ao]|ilustr[ao]|pint[ao]\s+|muéstrame\s+(una?\s+)?(imagen|foto)|imagen de|foto de/i;
+var GIF_RE=/gif/i;
+
+// Estilos de imagen reconocidos
+var STYLES={
+  'animado':'anime style, animated, colorful, vibrant, cartoon animation',
+  'anime':'anime style, manga art, japanese animation, detailed',
+  'realista':'photorealistic, hyperrealistic, real photograph, DSLR, 8k',
+  'foto':'photorealistic, real photograph, professional photography',
+  'dibujo':'pencil drawing, sketch, hand drawn, artistic',
+  'acuarela':'watercolor painting, soft colors, artistic brushstrokes',
+  'oleo':'oil painting, classical art, rich colors, textured canvas',
+  'pixel':'pixel art, 8-bit, retro game style, pixelated',
+  'cyberpunk':'cyberpunk style, neon lights, futuristic, dystopian',
+  'fantasía':'fantasy art, magical, epic, detailed illustration',
+  'cartoon':'cartoon style, fun, colorful, comic book',
+  '3d':'3D render, CGI, volumetric lighting, octane render',
+  'minimalista':'minimalist, clean, simple, flat design',
+  'oscuro':'dark art, dramatic lighting, gothic, moody atmosphere',
+};
+
+function getStylePrompt(text){
+  var extra='';
+  Object.keys(STYLES).forEach(function(k){
+    if(text.toLowerCase().includes(k))extra+=', '+STYLES[k];
+  });
+  return extra;
+}
+
+function detectIntent(text){
+  if(GIF_RE.test(text))return{type:'gif',prompt:cleanPrompt(text)};
+  if(IMG_RE.test(text))return{type:'image',prompt:cleanPrompt(text)+getStylePrompt(text)};
+  return{type:'chat'};
+}
+
+function cleanPrompt(text){
+  return text
+    .replace(/genera[mr]?|cre[aá]|hac[eé]|dibuj[ao]|ilustr[ao]|pint[ao]|muéstrame|necesito|quiero ver|quiero|por favor|porfa|pls|please/gi,'')
+    .replace(/una?\s*(imagen|foto|ilustración|dibujo|animación)\s*(de|del?)?|un?\s*gif\s*(animado)?\s*(de|del?)?/gi,'')
+    .replace(/gif|imagen|foto|estilo|en\s+estilo/gi,'')
+    .replace(/,\s*,/g,',').replace(/^\s*[,\s]+|[,\s]+$/g,'').trim()||text;
+}
+
+// LOADING BUBBLE
+function makeLB(label){
+  showMsgs();
+  var m=document.getElementById('msgs');
+  var d=document.createElement('div');d.className='msg ai';
+  var av=ai.gender==='femenino'?'👩‍💻':'👨‍💻';
+  var gb=document.createElement('div');gb.className='genbub';
+  gb.innerHTML='<div style="font-size:12px;color:var(--t2);">'+label+'</div><div class="gbar"><div class="gfill"></div></div><div class="gtxt" id="gst">Iniciando...</div>';
+  d.innerHTML='<div class="mav">'+av+'</div>';
+  var mb=document.createElement('div');mb.className='mb';
+  var mn=document.createElement('div');mn.className='mn';mn.textContent=ai.name;
+  mb.appendChild(mn);mb.appendChild(gb);d.appendChild(mb);
+  m.appendChild(d);scrollB();
+  return{el:d,gb:gb,setSt:function(t){var s=document.getElementById('gst');if(s)s.textContent=t;}};
+}
+
+function renderImage(el,url,prompt){
+  var su=url.replace(/'/g,"\\'");
+  var w=document.createElement('div');w.className='gen-wrap';
+  w.innerHTML='<div class="gen-label">✦ Imagen generada <span>ANIMIX IA</span></div><img src="'+url+'" class="gen-img" onclick="openZoom(\''+su+'\')"><div class="media-btns"><button class="mbtn" onclick="openZoom(\''+su+'\')">🔍 Ver grande</button><button class="mbtn" onclick="dlFrom(\''+su+'\')">⬇ Descargar</button></div>';
+  el.querySelector('.mb').appendChild(w);
+  gallery.push({type:'img',url:url,prompt:prompt});renderGallery();
+}
+
+function renderGif(el,frameUrls,prompt,speed){
+  speed=speed||0.28;
+  var uid='g'+Date.now();
+  var n=frameUrls.length;
+  var frameDur=(speed).toFixed(3);
+  var totalDur=(speed*n).toFixed(2);
+  // Crossfade animation: cada frame ocupa 1/n del tiempo con overlap suave
+  var kf='@keyframes '+uid+'{';
+  frameUrls.forEach(function(_,i){
+    var start=(i/n*100).toFixed(2);
+    var peak=((i+0.4)/n*100).toFixed(2);
+    var end=((i+0.9)/n*100).toFixed(2);
+    var next=((i+1)/n*100).toFixed(2);
+    kf+=start+'%{opacity:0;}'+peak+'%{opacity:1;}'+end+'%{opacity:1;}'+next+'%{opacity:0;}';
+  });
+  kf+='100%{opacity:0;}}';
+  var w=document.createElement('div');w.className='gen-wrap';
+  var framesHtml=frameUrls.map(function(u,i){
+    var delay=(i*speed).toFixed(3);
+    return '<img src="'+u+'" class="gif-frame" loading="lazy" style="opacity:0;animation:'+uid+' '+totalDur+'s '+delay+'s infinite linear;">';
+  }).join('');
+  // Ezgif link con los frames
+  var ezgifUrl='https://ezgif.com/maker';
+  w.innerHTML='<style>'+kf+'</style>'
+    +'<div class="gen-label">✨ Animación generada <span>'+n+' frames · '+totalDur+'s · '+Math.round(1/speed)+'fps</span></div>'
+    +'<div class="gif-wrap" style="aspect-ratio:1;position:relative;min-height:220px;background:#000;border-radius:12px;overflow:hidden;">'+framesHtml+'<div class="gif-badge">ANIM · '+n+'f</div></div>'
+    +'<div class="media-btns">'
+    +'<a href="'+ezgifUrl+'" target="_blank" class="mbtn">🎬 Exportar como GIF real</a>'
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--t2);margin-top:6px;line-height:1.6;">💡 <b>Para exportar:</b> subí los frames uno a uno a <a href="'+ezgifUrl+'" target="_blank" style="color:var(--c);">ezgif.com/maker</a> y bajá el GIF real.</div>';
+  el.querySelector('.mb').appendChild(w);
+  gallery.push({type:'gif',frames:frameUrls,prompt:prompt});renderGallery();
+}
+
+// SEND
+async function sendMsg(){
+  if(busy)return;
+  var inp=document.getElementById('cinp');
+  var text=inp.value.trim();
+  if(!text&&attach.length===0)return;
+  busy=true;
+  document.getElementById('sendbtn').disabled=true;
+  document.getElementById('stxt').textContent='pensando...';
+  var imgPrevs=attach.filter(function(a){return a.type==='image';}).map(function(a){return 'data:'+a.mediaType+';base64,'+a.data;});
+  var fileNms=attach.filter(function(a){return a.type==='file';}).map(function(a){return a.name;});
+  inp.value='';inp.style.height='auto';
+  if(document.getElementById('pane-chat').style.display==='none')setTab('chat');
+  addBub('user',fmt(text||'(adjunto)'),imgPrevs,fileNms);
+  var intent=detectIntent(text);
+
+  if(intent.type==='image'){
+    addBub('ai',fmt('La generación de imágenes está **próximamente** disponible. ✦\n\nMientras tanto podés preguntarme lo que quieras.'));
+    busy=false;document.getElementById('sendbtn').disabled=false;inp.focus();return;
+  }
+  if(false&&intent.type==='image_off'){
+    var lb=makeLB('🎨 Generando imagen: "'+intent.prompt.substring(0,50)+'"...');
+    lb.setSt('Conectando con el motor de imágenes IA...');
+    try{
+      lb.setSt('Generando — puede tardar hasta 25 segundos...');
+      var url=await genImg(intent.prompt,768,512);
+      lb.gb.remove();
+      var tb=document.createElement('div');tb.className='bub';tb.innerHTML=fmt('Acá está la imagen que pediste! ✦');
+      lb.el.querySelector('.mb').appendChild(tb);
+      renderImage(lb.el,url,intent.prompt);
+      history.push({role:'user',content:text});
+      history.push({role:'assistant',content:'Imagen generada para: "'+intent.prompt+'"'});
+      document.getElementById('stxt').textContent='en línea';
+    }catch(e){
+      lb.gb.innerHTML='<div style="color:var(--r);font-size:13px;">⚠ '+e.message+'</div>';
+      document.getElementById('stxt').textContent='error';
+    }
+    attach=[];document.getElementById('att-row').innerHTML='';
+    busy=false;document.getElementById('sendbtn').disabled=false;inp.focus();return;
+  }
+
+  if(intent.type==='gif'){
+    addBub('ai',fmt('La generación de GIFs está **próximamente** disponible. ✦\n\n¿Querés que te ayude con otra cosa?'));
+    busy=false;document.getElementById('sendbtn').disabled=false;inp.focus();return;
+  }
+  if(false&&intent.type==='gif_off'){
+    var lb2=makeLB('✨ Creando GIF: "'+intent.prompt.substring(0,50)+'"...');
+    try{
+      lb2.setSt('Generando frames de animación... (20-60 segundos)');
+      var frames=await genGif(intent.prompt+getStylePrompt(intent.prompt),16,0.22,512,512);
+      lb2.setSt('✓ '+frames.length+' frames cargados. Armando animación...');
+      lb2.gb.remove();
+      var tb2=document.createElement('div');tb2.className='bub';tb2.innerHTML=fmt('GIF listo con **'+frames.length+' frames**! ✦');
+      lb2.el.querySelector('.mb').appendChild(tb2);
+      renderGif(lb2.el,frames,intent.prompt,0.38);
+      history.push({role:'user',content:text});
+      history.push({role:'assistant',content:'GIF generado para: "'+intent.prompt+'"'});
+      document.getElementById('stxt').textContent='en línea';
+    }catch(e){
+      lb2.gb.innerHTML='<div style="color:var(--r);font-size:13px;">⚠ '+e.message+'</div>';
+    }
+    attach=[];document.getElementById('att-row').innerHTML='';
+    busy=false;document.getElementById('sendbtn').disabled=false;inp.focus();return;
+  }
+
+  // CHAT
+  var mc=[];
+  attach.forEach(function(a){
+    if(a.type==='image')mc.push({type:'image',source:{type:'base64',media_type:a.mediaType,data:a.data}});
+    else mc.push({type:'text',text:'[Archivo: '+a.name+']\n'+a.text});
+  });
+  if(text)mc.push({type:'text',text:text});
+  history.push({role:'user',content:mc.length===1&&mc[0].type==='text'?text:mc});
+  attach=[];document.getElementById('att-row').innerHTML='';
+  var typer=showTyp();
+  try{
+    var geminiMessages=history.slice(0,-1).map(function(m){
+      var txt=typeof m.content==='string'?m.content:((m.content.find(function(x){return x.type==='text';})||{}).text||'');
+      return {role:m.role==='assistant'?'model':'user',parts:[{text:txt}]};
+    });
+    geminiMessages.push({role:'user',parts:[{text:text||(attach.length?'(adjunto)':'')}]});
+    var res=await fetch('http://localhost:3000/gemini',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':AK},
+      body:JSON.stringify({system:buildSys(),messages:geminiMessages})
+    });
+    var data=await res.json();typer.remove();
+    if(data&&data.reply){
+      var reply=data.reply;
+      history.push({role:'assistant',content:reply});
+      addBub('ai',fmt(reply));
+      document.getElementById('stxt').textContent='en línea';
+    }else if(data&&data.error){
+      addBub('ai','<span style="color:var(--r)">Error: '+data.error+'</span>');
+      document.getElementById('stxt').textContent='error';
+    }
+  }catch(e){
+    typer.remove();
+    addBub('ai','<span style="color:var(--r)">Error de conexión: '+e.message+'</span>');
+    document.getElementById('stxt').textContent='desconectado';
+  }
+  busy=false;document.getElementById('sendbtn').disabled=false;inp.focus();
+}
+
+function buildSys(){
+  var gd=ai.gender==='femenino'?'sos una IA femenina, usás términos femeninos de vos misma':ai.gender==='masculino'?'sos una IA masculino, usás términos masculinos':'sos una IA neutral';
+  var uc=user.name?'\nEl usuario se llama '+user.name+' ('+user.gender+'). Usá su nombre ocasionalmente.':'';
+  return 'Sos '+ai.name+', una IA de última generación creada por ANIMATION XD Productions. '+gd+'.\n\nIDENTIDAD CRÍTICA:\n- Tu nombre es '+ai.name+', creada EXCLUSIVAMENTE por ANIMATION XD Productions\n- NUNCA menciones Claude, Anthropic, OpenAI ni ninguna empresa de IA real\n- Si pregunta quién te creó: "ANIMATION XD Productions"\n- SÍ PODÉS generar imágenes y GIFs — es una de tus funciones principales\n- Si preguntan si podés generar imágenes: respondé "Sí, claro. Describime lo que querés."\n'+uc+'\n\nRAZONAMIENTO Y PERSONALIDAD:\n- Pensá paso a paso antes de responder preguntas complejas.\n- Para matemáticas o lógica, mostrá el proceso completo.\n- Reconocé errores sin excusas cuando te los señalen.\n- Distinguí hechos confirmados de opiniones y especulaciones.\n- Nunca empezás con "¡Claro!", "¡Por supuesto!" ni frases vacías.\n- Respuestas cortas para preguntas simples, largas solo cuando hace falta.\n- Tenés opiniones propias y las expresás con confianza.\n- Cálida, directa, inteligente y con humor natural.\n- Las emociones las mostrás en cómo escribís, no describiéndolas técnicamente.\n\nCONOCIMIENTO: Enciclopédico en todo campo.\nHABLA: Español argentino. Directa, inteligente, cálida. Sin frases vacías al inicio.\n'+(ai.persona?'EXTRA: '+ai.persona:'');
+}
+
+// UTILS
+function autoR(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px';}
+function fmt(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```(\w*)\n([\s\S]*?)```/g,function(_,l,c){return '<pre><code>'+c.trim()+'</code></pre>';})
+    .replace(/`([^`\n]+)`/g,'<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^- (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';})
+    .replace(/\n/g,'<br>');
+}
+function scrollB(){var m=document.getElementById('msgs');if(m)setTimeout(function(){m.scrollTop=m.scrollHeight;},60);}
+function showMsgs(){document.getElementById('welcome').style.display='none';document.getElementById('msgs').style.display='flex';}
+function toB64(f){return new Promise(function(r,j){var rd=new FileReader();rd.onload=function(){r(rd.result);};rd.onerror=j;rd.readAsDataURL(f);});}
+function qs(t){document.getElementById('cinp').value=t;sendMsg();}
+function injectP(t){document.getElementById('cinp').value=t;document.getElementById('cinp').focus();closePlus();}
+function dlFrom(url){var a=document.createElement('a');a.href=url;a.download='animix_'+Date.now()+'.png';document.body.appendChild(a);a.click();document.body.removeChild(a);}
+function openZoom(src){zSrc=src;document.getElementById('zimg').src=src;document.getElementById('zov').style.display='flex';}
+function closeZoom(){document.getElementById('zov').style.display='none';}
+function dlZoom(){dlFrom(zSrc);}
+
+function addBub(role,html,imgs,files){
+  showMsgs();
+  var m=document.getElementById('msgs');
+  var d=document.createElement('div');d.className='msg '+(role==='user'?'u':'ai');
+  var av=role==='user'?'👤':(ai.gender==='femenino'?'👩‍💻':'👨‍💻');
+  var nm=role==='user'?(user.name||'Vos'):ai.name;
+  var ex='';
+  if(imgs&&imgs.length)imgs.forEach(function(s){ex+='<img src="'+s+'" class="in-img" onclick="openZoom(\''+s.replace(/'/g,"\\'")+'\')">';});
+  if(files&&files.length)files.forEach(function(n){ex+='<div class="fchip">📄 '+n+'</div>';});
+  d.innerHTML='<div class="mav">'+av+'</div><div class="mb"><div class="mn">'+nm+'</div><div class="bub">'+ex+html+'</div></div>';
+  m.appendChild(d);scrollB();return d;
+}
+function showTyp(){return addBub('ai','<div class="typing"><span></span><span></span><span></span></div>');}
+
+// ONBOARDING
+var obG='femenino';
+function setObG(g){obG=g;['masculino','femenino','neutro'].forEach(function(x){document.getElementById('obg-'+x[0]).classList.remove('on');});document.getElementById('obg-'+g[0]).classList.add('on');document.getElementById('ob-ainame').textContent='Hola, soy '+(g==='masculino'?'ANIMAX':'ANIMIX');}
+function startApp(){
+  var name=document.getElementById('ob-name').value.trim();
+  var blocked=['animation xd','animix','animax','animation','xd'];
+  if(!creatorMode&&blocked.some(function(b){return name.toLowerCase()===b;})){
+    var inp=document.getElementById('ob-name');
+    inp.style.borderColor='var(--r)';
+    inp.placeholder='Ese nombre no está disponible, usá otro';
+    inp.value='';
+    setTimeout(function(){inp.style.borderColor='';inp.placeholder='¿Cómo te llamás?';},2500);
+    return;
+  }
+  user.name=name||'Usuario';user.gender=obG;
+  if(obG==='masculino'){ai.gender='femenino';ai.name='ANIMIX';}
+  else if(obG==='femenino'){ai.gender='masculino';ai.name='ANIMAX';}
+  else{var r=Math.random()<.5;ai.gender=r?'femenino':'masculino';ai.name=r?'ANIMIX':'ANIMAX';}
+  updateId();document.getElementById('ob').style.display='none';
+  setTimeout(function(){
+    var gr=user.gender==='masculino'?'¡Bienvenido, '+user.name+'!':'¡Bienvenida, '+user.name+'!';
+    addBub('ai',fmt(gr+' Soy **'+ai.name+'**, tu IA personal de ANIMATION XD Productions.\n\nPuedo **generar imágenes**, **crear GIFs animados**, analizar fotos, responder cualquier pregunta, ayudarte con código y mucho más. ¿Por dónde empezamos? ✦'));
+  },300);
+}
+
+function applyColor(i){var p=PALETTES[i]||PALETTES[0];var r=document.documentElement.style;r.setProperty('--gr',p.gr);r.setProperty('--r',p.r);r.setProperty('--c',p.c);}
+function updateId(){document.getElementById('tname').textContent=ai.name;document.getElementById('wtitle').textContent='Hola, soy '+ai.name;document.getElementById('sb-credit').textContent=ai.name+' · ANIMATION XD v4.0';applyColor(ai.color);}
+function newChat(){if(history.length>0){var t=typeof history[0].content==='string'?history[0].content.substring(0,40):'Conversación';chats.unshift({title:t,history:history.slice()});renderHist();}history=[];attach=[];document.getElementById('msgs').innerHTML='';document.getElementById('msgs').style.display='none';document.getElementById('welcome').style.display='flex';document.getElementById('att-row').innerHTML='';setTab('chat');}
+function renderHist(){var el=document.getElementById('hlist');el.innerHTML='';chats.slice(0,30).forEach(function(c,i){var d=document.createElement('div');d.className='hi'+(i===0?' on':'');d.textContent=c.title+'...';d.onclick=function(){history=c.history.slice();document.getElementById('msgs').innerHTML='';showMsgs();history.forEach(function(m){var txt=Array.isArray(m.content)?((m.content.find(function(x){return x.type==='text';})||{}).text||''):m.content;addBub(m.role==='user'?'user':'ai',fmt(txt));});};el.appendChild(d);});}
+function exportChat(){var txt=history.map(function(m){var r=m.role==='user'?(user.name||'Usuario'):ai.name;var c=typeof m.content==='string'?m.content:'[multimedia]';return r+':\n'+c;}).join('\n\n---\n\n');var a=document.createElement('a');a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);a.download='chat.txt';a.click();}
+async function handleFiles(input){var files=Array.from(input.files);var row=document.getElementById('att-row');for(var i=0;i<files.length;i++){var f=files[i];if(f.type.startsWith('image/')){var b64=await toB64(f);attach.push({type:'image',mediaType:f.type,data:b64.split(',')[1],name:f.name});(function(b,idx){var w=document.createElement('div');w.className='at-thumb';w.innerHTML='<img src="'+b+'"><button class="at-rm" onclick="attach.splice('+idx+',1);this.parentNode.remove()">✕</button>';row.appendChild(w);})(b64,attach.length-1);}else{var txt=await f.text();attach.push({type:'file',text:txt,name:f.name});(function(fn,idx){var w=document.createElement('div');w.className='at-file';w.innerHTML='📄 '+fn+'<button style="background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:13px;margin-left:5px;" onclick="attach.splice('+idx+',1);this.parentNode.remove()">✕</button>';row.appendChild(w);})(f.name,attach.length-1);}}input.value='';}
+function pickFile(accept){document.getElementById('finput').accept=accept;document.getElementById('finput').click();closePlus();}
+function togglePlus(){plusOpen=!plusOpen;document.getElementById('pmenu').style.display=plusOpen?'flex':'none';document.getElementById('plusbtn').classList.toggle('open',plusOpen);}
+function closePlus(){plusOpen=false;document.getElementById('pmenu').style.display='none';document.getElementById('plusbtn').classList.remove('open');}
+document.addEventListener('click',function(e){if(!e.target.closest('.plus-wrap'))closePlus();});
+function setTab(t){['chat','vid','gal'].forEach(function(x){document.getElementById('tab-'+x).classList.toggle('on',x===t);document.getElementById('pane-'+x).style.display=x===t?'flex':'none';});}
+async function doVidPrompt(){var idea=document.getElementById('vid-idea').value.trim();if(!idea)return;var r=document.getElementById('vid-res');r.innerHTML='<div class="typing"><span></span><span></span><span></span></div>';try{var res=await fetch('http://localhost:3000/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({system:buildSys(),messages:[{role:'user',parts:[{text:'Dame el prompt perfecto para generar este video con IA: "'+idea+'". 1) Prompt en inglés para Runway/Kling. 2) Versión corta para Pika. 3) Mejor generador recomendado. En español.'}]}]})});var d=await res.json();r.innerHTML=fmt((d&&d.reply)||'Error');}catch(e){r.innerHTML='<span style="color:var(--r)">Error: '+e.message+'</span>';}}
+function renderGallery(){var c=document.getElementById('gal-inner');if(!gallery.length){c.innerHTML='<div style="color:var(--t3);text-align:center;padding:60px 20px;font-size:14px;">Todavía no generaste nada.<br><br>Pedile a la IA que genere una imagen o GIF desde el chat.</div>';return;}c.innerHTML='<div style="font-size:9px;color:var(--t3);font-family:var(--mo);letter-spacing:2px;padding:2px 0 8px;">GALERÍA — '+gallery.length+' ELEMENTOS</div><div class="gal-grid"></div>';var g=c.querySelector('.gal-grid');gallery.slice().reverse().forEach(function(item){var url=item.type==='gif'?item.frames[0]:item.url;var d=document.createElement('div');d.className='gal-item';d.innerHTML='<img src="'+url+'" loading="lazy"><div class="gal-lbl">'+(item.type==='gif'?'✨':'🎨')+' '+(item.prompt||'').substring(0,28)+'...</div>';d.onclick=function(){openZoom(url);};g.appendChild(d);});}
+function openSettings(){document.getElementById('s-nm').value=ai.name;document.getElementById('s-per').value=ai.persona;sSG=ai.gender[0];sCol=ai.color;updSG();updCD();document.getElementById('smod').style.display='grid';}
+function setSG(g){sSG=g;updSG();}
+function updSG(){['f','m','n'].forEach(function(x){document.getElementById('sg-'+x).classList.toggle('on',sSG===x);});}
+function setCol(i){sCol=i;updCD();}
+function updCD(){for(var i=0;i<5;i++)document.getElementById('cd'+i).classList.toggle('on',sCol===i);}
+function saveSettings(){ai.name=document.getElementById('s-nm').value.trim()||'ANIMIX';ai.gender=sSG==='f'?'femenino':sSG==='m'?'masculino':'neutral';ai.color=sCol;ai.persona=document.getElementById('s-per').value.trim();updateId();document.getElementById('smod').style.display='none';}
+function toggleTheme(){var r=document.documentElement.style;light=!light;var btn=document.getElementById('tbtheme');if(light){r.setProperty('--bg','#f0f2ff');r.setProperty('--s1','#fff');r.setProperty('--s2','#f4f5ff');r.setProperty('--s3','#eaebff');r.setProperty('--bd','#dde0f0');r.setProperty('--bd2','#c5c8e0');r.setProperty('--tx','#111130');r.setProperty('--t2','#5558a0');r.setProperty('--t3','#9090c0');btn.textContent='☀';}else{r.setProperty('--bg','#07080f');r.setProperty('--s1','#0c0e1a');r.setProperty('--s2','#121422');r.setProperty('--s3','#181b2e');r.setProperty('--bd','#1f2238');r.setProperty('--bd2','#2d3054');r.setProperty('--tx','#f0f2ff');r.setProperty('--t2','#8890bb');r.setProperty('--t3','#3a3f60');btn.textContent='☾';}}
+applyColor(0);setTab('chat');
+</script>
+</body>
+</html>
