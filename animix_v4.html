@@ -613,7 +613,7 @@ async function sendMsg(){
     // Último mensaje del usuario con posibles imágenes adjuntas
     var lastParts=[];
     attach.forEach(function(a){
-      if(a.type==='image')lastParts.push({type:'image',source:{type:'base64',media_type:a.mediaType,data:a.data}});
+      if(a.type==='image')lastParts.push({type:'image_url',image_url:{url:'data:'+a.mediaType+';base64,'+a.data}});
       else lastParts.push({type:'text',text:'[Archivo: '+a.name+']\n'+a.text});
     });
     if(text)lastParts.push({type:'text',text:text});

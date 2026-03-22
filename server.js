@@ -555,6 +555,7 @@ const server = http.createServer(async (req, res) => {
               const parts = [];
               m.content.forEach(p => {
                 if (p.type === 'text' && p.text) parts.push({ type: 'text', text: String(p.text) });
+                else if (p.type === 'image_url') parts.push(p); // already correct format
                 else if (p.type === 'image' && p.source) parts.push({ type: 'image_url', image_url: { url: `data:${p.source.media_type};base64,${p.source.data}` } });
               });
               if (parts.length) openaiMessages.push({ role, content: parts });
