@@ -9,7 +9,7 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─── Motor 2: Hugging Face Inference API ────────────────────────────────────
 const HF_TOKEN = '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';
-const OR_TOKEN = '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';
+const OR_TOKEN = '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';
 
 // Mejorar prompt con IA antes de generar imagen
 async function enhancePrompt(prompt) {
@@ -534,18 +534,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // /gemini → proxy OpenRouter (reemplaza Gemini)
+  // /gemini → proxy Groq
   if (urlObj.pathname === '/gemini' && req.method === 'POST') {
     let body = '';
     req.on('data', c => body += c);
     req.on('end', () => {
       try {
         const parsed = JSON.parse(body);
-        const apiKey = OR_TOKEN;
         const systemText = parsed.system || '';
         const messages = parsed.messages || [];
 
-        // Convertir formato Gemini a OpenAI (que usa OpenRouter)
         const openaiMessages = [];
         if (systemText) openaiMessages.push({ role: 'system', content: systemText });
         messages.forEach(m => {
@@ -554,29 +552,29 @@ const server = http.createServer(async (req, res) => {
             if (m.parts) text = m.parts.map(p => p.text || '').join('');
             else if (typeof m.content === 'string') text = m.content;
             else if (Array.isArray(m.content)) text = m.content.map(p => p.text || '').join('');
-            if (!text.trim()) return; // saltar mensajes vacíos
+            if (!text.trim()) return;
             const role = m.role === 'model' ? 'assistant' : 'user';
             openaiMessages.push({ role, content: text });
           } catch(e) {}
         });
-        // Asegurar que haya mensajes
 
-        const orBody = JSON.stringify({
-          model: 'openrouter/auto',
+        const groqBody = JSON.stringify({
+          model: 'llama-3.1-8b-instant',
           messages: openaiMessages,
           max_tokens: 4096,
+          temperature: 0.9,
         });
 
+        const GROQ_KEY = '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';
+
         const opts = {
-          hostname: 'openrouter.ai',
-          path: '/api/v1/chat/completions',
+          hostname: 'api.groq.com',
+          path: '/openai/v1/chat/completions',
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-            'HTTP-Referer': 'https://animix-production-3488.up.railway.app',
-            'X-Title': 'ANIMIX',
-            'Content-Length': Buffer.byteLength(orBody),
+            'Authorization': `Bearer ${GROQ_KEY}`,
+            'Content-Length': Buffer.byteLength(groqBody),
           },
           timeout: 30000,
         };
@@ -606,7 +604,7 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
           res.end(JSON.stringify({ error: e.message }));
         });
-        pr.write(orBody);
+        pr.write(groqBody);
         pr.end();
       } catch(e) {
         res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });

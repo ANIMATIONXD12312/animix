@@ -611,6 +611,13 @@ async function sendMsg(){
       return {role:m.role==='assistant'?'model':'user',parts:[{text:txt}]};
     });
     geminiMessages.push({role:'user',parts:[{text:text||(attach.length?'(adjunto)':'')}]});
+    // Convertir mensajes al formato OpenRouter directo
+    var orMessages=[];
+    orMessages.push({role:'system',content:buildSys()});
+    geminiMessages.forEach(function(m){
+      var txt=m.parts?m.parts.map(function(p){return p.text||'';}).join(''):(m.content||'');
+      if(txt.trim())orMessages.push({role:m.role==='model'?'assistant':'user',content:txt});
+    });
     var res=await fetch('/gemini',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':AK},
