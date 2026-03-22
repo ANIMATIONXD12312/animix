@@ -543,6 +543,7 @@ const server = http.createServer(async (req, res) => {
         const parsed = JSON.parse(body);
         const systemText = parsed.system || '';
         const messages = parsed.messages || [];
+        console.log('[GEMINI] Mensajes recibidos:', JSON.stringify(messages).substring(0, 300));
 
         const openaiMessages = [];
         if (systemText) openaiMessages.push({ role: 'system', content: systemText });
