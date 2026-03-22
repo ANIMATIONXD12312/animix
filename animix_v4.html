@@ -398,7 +398,7 @@ let busy=false,light=false,plusOpen=false,sSG='f',sCol=0,zSrc='';
 
 // IMAGE GENERATION — via proxy local (server.js)
 async function genImg(prompt,w,h){
-  var url='http://localhost:3000/genimg?p='+encodeURIComponent(prompt);
+  var url='/genimg?p='+encodeURIComponent(prompt);
   var resp=await fetch(url,{signal:AbortSignal.timeout(120000)});
   if(!resp.ok){
     var err=await resp.json().catch(function(){return{error:'Error desconocido'};});
@@ -611,7 +611,7 @@ async function sendMsg(){
       return {role:m.role==='assistant'?'model':'user',parts:[{text:txt}]};
     });
     geminiMessages.push({role:'user',parts:[{text:text||(attach.length?'(adjunto)':'')}]});
-    var res=await fetch('http://localhost:3000/gemini',{
+    var res=await fetch('/gemini',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':AK},
       body:JSON.stringify({system:buildSys(),messages:geminiMessages})
@@ -715,7 +715,7 @@ function togglePlus(){plusOpen=!plusOpen;document.getElementById('pmenu').style.
 function closePlus(){plusOpen=false;document.getElementById('pmenu').style.display='none';document.getElementById('plusbtn').classList.remove('open');}
 document.addEventListener('click',function(e){if(!e.target.closest('.plus-wrap'))closePlus();});
 function setTab(t){['chat','vid','gal'].forEach(function(x){document.getElementById('tab-'+x).classList.toggle('on',x===t);document.getElementById('pane-'+x).style.display=x===t?'flex':'none';});}
-async function doVidPrompt(){var idea=document.getElementById('vid-idea').value.trim();if(!idea)return;var r=document.getElementById('vid-res');r.innerHTML='<div class="typing"><span></span><span></span><span></span></div>';try{var res=await fetch('http://localhost:3000/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({system:buildSys(),messages:[{role:'user',parts:[{text:'Dame el prompt perfecto para generar este video con IA: "'+idea+'". 1) Prompt en inglés para Runway/Kling. 2) Versión corta para Pika. 3) Mejor generador recomendado. En español.'}]}]})});var d=await res.json();r.innerHTML=fmt((d&&d.reply)||'Error');}catch(e){r.innerHTML='<span style="color:var(--r)">Error: '+e.message+'</span>';}}
+async function doVidPrompt(){var idea=document.getElementById('vid-idea').value.trim();if(!idea)return;var r=document.getElementById('vid-res');r.innerHTML='<div class="typing"><span></span><span></span><span></span></div>';try{var res=await fetch('/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({system:buildSys(),messages:[{role:'user',parts:[{text:'Dame el prompt perfecto para generar este video con IA: "'+idea+'". 1) Prompt en inglés para Runway/Kling. 2) Versión corta para Pika. 3) Mejor generador recomendado. En español.'}]}]})});var d=await res.json();r.innerHTML=fmt((d&&d.reply)||'Error');}catch(e){r.innerHTML='<span style="color:var(--r)">Error: '+e.message+'</span>';}}
 function renderGallery(){var c=document.getElementById('gal-inner');if(!gallery.length){c.innerHTML='<div style="color:var(--t3);text-align:center;padding:60px 20px;font-size:14px;">Todavía no generaste nada.<br><br>Pedile a la IA que genere una imagen o GIF desde el chat.</div>';return;}c.innerHTML='<div style="font-size:9px;color:var(--t3);font-family:var(--mo);letter-spacing:2px;padding:2px 0 8px;">GALERÍA — '+gallery.length+' ELEMENTOS</div><div class="gal-grid"></div>';var g=c.querySelector('.gal-grid');gallery.slice().reverse().forEach(function(item){var url=item.type==='gif'?item.frames[0]:item.url;var d=document.createElement('div');d.className='gal-item';d.innerHTML='<img src="'+url+'" loading="lazy"><div class="gal-lbl">'+(item.type==='gif'?'✨':'🎨')+' '+(item.prompt||'').substring(0,28)+'...</div>';d.onclick=function(){openZoom(url);};g.appendChild(d);});}
 function openSettings(){document.getElementById('s-nm').value=ai.name;document.getElementById('s-per').value=ai.persona;sSG=ai.gender[0];sCol=ai.color;updSG();updCD();document.getElementById('smod').style.display='grid';}
 function setSG(g){sSG=g;updSG();}
