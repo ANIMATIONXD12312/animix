@@ -533,12 +533,12 @@ async function transcribeAudio(audioBuffer, mimeType) {
 // ─── Motor de Voz: ElevenLabs TTS ────────────────────────────────────────────
 const ELEVENLABS_KEY = process.env.ELEVENLABS_KEY || '';
 
-// Voces premium — las más humanas y energéticas disponibles
-// Sarah: femenina, energética, expresiva, perfecta para español
-// Charlie: masculino, natural, conversacional, cálido
+// Voces premium en español argentino — las más humanas y naturales
+// Malena: joven, dinámica, acento rioplatense perfecto → ANIMIX
+// Tomas: la mejor voz del Río de la Plata → ANIMAX
 const VOICE_MAP = {
-  femenino: process.env.ANIMIX_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL', // Sarah
-  masculino: process.env.ANIMAX_VOICE_ID || 'IKne3meq5aSn9XLyUdCD', // Charlie
+  femenino: process.env.ANIMIX_VOICE_ID || 'p7AwDmKvTdoHTBuueGvP', // Malena - argentina, joven, dinámica
+  masculino: process.env.ANIMAX_VOICE_ID || 'QK4xDwo9ESPHA4JNUpX3', // Tomas - Río de la Plata
 };
 
 // ─── Detección de emoción con sistema de puntaje ────────────────────────────
