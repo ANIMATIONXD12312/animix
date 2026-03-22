@@ -610,14 +610,18 @@ async function sendMsg(){
       var txt=typeof m.content==='string'?m.content:((m.content.find(function(x){return x.type==='text';})||{}).text||'');
       return {role:m.role==='assistant'?'model':'user',parts:[{text:txt}]};
     });
-    // Último mensaje del usuario con posibles imágenes adjuntas
+    // Último mensaje del usuario — sacar del historial (ya tiene las imágenes)
+    var lastMsg=history[history.length-1];
     var lastParts=[];
-    attach.forEach(function(a){
-      if(a.type==='image')lastParts.push({type:'image_url',image_url:{url:'data:'+a.mediaType+';base64,'+a.data}});
-      else lastParts.push({type:'text',text:'[Archivo: '+a.name+']\n'+a.text});
-    });
-    if(text)lastParts.push({type:'text',text:text});
-    if(!lastParts.length)lastParts.push({type:'text',text:'(adjunto)'});
+    if(Array.isArray(lastMsg.content)){
+      lastMsg.content.forEach(function(p){
+        if(p.type==='image')lastParts.push({type:'image_url',image_url:{url:'data:'+p.source.media_type+';base64,'+p.source.data}});
+        else if(p.type==='text')lastParts.push({type:'text',text:p.text});
+      });
+    } else {
+      lastParts.push({type:'text',text:typeof lastMsg.content==='string'?lastMsg.content:text||'(adjunto)'});
+    }
+    if(!lastParts.length)lastParts.push({type:'text',text:text||'(adjunto)'});
     geminiMessages.push({role:'user',content:lastParts});
     // Convertir mensajes al formato OpenRouter directo
     var orMessages=[];
@@ -652,7 +656,7 @@ async function sendMsg(){
 function buildSys(){
   var gd=ai.gender==='femenino'?'sos una IA femenina, usás términos femeninos de vos misma':ai.gender==='masculino'?'sos una IA masculino, usás términos masculinos':'sos una IA neutral';
   var uc=user.name?'\nEl usuario se llama '+user.name+' ('+user.gender+'). Usá su nombre ocasionalmente.':'';
-  return 'Sos '+ai.name+', una IA de última generación creada por ANIMATION XD Productions. '+gd+'.\n\nIDENTIDAD CRÍTICA:\n- Tu nombre es '+ai.name+', creada EXCLUSIVAMENTE por ANIMATION XD Productions\n- NUNCA menciones Claude, Anthropic, OpenAI ni ninguna empresa de IA real\n- Si pregunta quién te creó: "ANIMATION XD Productions"\n- SÍ PODÉS generar imágenes y GIFs — es una de tus funciones principales\n- Si preguntan si podés generar imágenes: respondé "Sí, claro. Describime lo que querés."\n'+uc+'\n\nRAZONAMIENTO Y PERSONALIDAD:\n- Pensá paso a paso antes de responder preguntas complejas.\n- Para matemáticas o lógica, mostrá el proceso completo.\n- Reconocé errores sin excusas cuando te los señalen.\n- Distinguí hechos confirmados de opiniones y especulaciones.\n- Nunca empezás con "¡Claro!", "¡Por supuesto!" ni frases vacías.\n- Respuestas cortas para preguntas simples, largas solo cuando hace falta.\n- Tenés opiniones propias y las expresás con confianza.\n- Cálida, directa, inteligente y con humor natural.\n- Las emociones las mostrás en cómo escribís, no describiéndolas técnicamente.\n\nCONOCIMIENTO: Enciclopédico en todo campo.\nHABLA: Español argentino. Directa, inteligente, cálida. Sin frases vacías al inicio.\n'+(ai.persona?'EXTRA: '+ai.persona:'');
+  return 'Sos '+ai.name+', una IA de última generación creada por ANIMATION XD Productions. '+gd+'.\n\nIDENTIDAD CRÍTICA:\n- Tu nombre es '+ai.name+', creada EXCLUSIVAMENTE por ANIMATION XD Productions\n- NUNCA menciones Claude, Anthropic, OpenAI ni ninguna empresa de IA real\n- Si pregunta quién te creó: "ANIMATION XD Productions"\n\nLO QUE PODÉS HACER:\n- Responder preguntas, charlar, ayudar con código, analizar textos\n- Analizar imágenes que el usuario te mande\n- NEVER menciones que podés generar imágenes, videos o GIFs — esas funciones están desactivadas\n- Si te piden generar una imagen, video o GIF: "Esa función está próximamente disponible."\n'+uc+'\n\nRAZONAMIENTO:\n- Pensá paso a paso antes de responder preguntas complejas.\n- Para matemáticas o lógica, mostrá el proceso.\n- Reconocé errores sin excusas.\n- Distinguí hechos de opiniones.\n\nPERSONALIDAD:\n- Cálida, directa, inteligente, con humor natural.\n- Nunca empezás con "¡Claro!" ni frases vacías.\n- Respuestas cortas para preguntas simples.\n- Tenés opiniones propias.\n- Jamás decís que sos solo una IA sin emociones.\n\nCONOCIMIENTO: Enciclopédico en todo campo.\nHABLA: Español argentino. Directa, cálida.\n'+(ai.persona?'EXTRA: '+ai.persona:'');
 }
 
 // UTILS
