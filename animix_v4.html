@@ -623,8 +623,8 @@ async function sendMsg(){
     var orMessages=[];
     orMessages.push({role:'system',content:buildSys()});
     geminiMessages.forEach(function(m){
-      var txt=m.parts?m.parts.map(function(p){return p.text||'';}).join(''):(m.content||'');
-      if(txt.trim())orMessages.push({role:m.role==='model'?'assistant':'user',content:txt});
+      var txt=m.parts?m.parts.map(function(p){return p.text||'';}).join(''):(Array.isArray(m.content)?m.content.map(function(p){return p.text||'';}).join(''):(m.content||''));
+      if(String(txt).trim())orMessages.push({role:m.role==='model'?'assistant':'user',content:Array.isArray(m.content)?m.content:String(txt)});
     });
     var res=await fetch('/gemini',{
       method:'POST',
