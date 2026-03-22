@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ANIMIX — ANIMATION XD</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#07080f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ANIMIX">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -215,6 +220,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   <div class="t-btns">
     <button class="tbtn" onclick="openSettings()">⚙</button>
     <button class="tbtn" onclick="toggleTheme()" id="tbtheme">☾</button>
+    <button class="tbtn" onclick="ttsEnabled=!ttsEnabled;this.style.color=ttsEnabled?'var(--c)':''" title="Activar voz">🔊</button>
   </div>
 </div>
 
@@ -307,8 +313,9 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
           oninput="autoR(this)"
           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"></textarea>
         <button class="send" id="sendbtn" onclick="sendMsg()">➤</button>
+        <button id="micbtn" onclick="toggleVoice()" style="width:35px;height:35px;border-radius:10px;background:transparent;border:1px solid var(--bd);color:var(--t2);cursor:pointer;display:grid;place-items:center;font-size:16px;flex-shrink:0;transition:all .2s;" title="Hablar">🎤</button>
       </div>
-      <div class="inp-hint">Enter enviar · Shift+Enter nueva línea · ＋ para más opciones</div>
+      <div class="inp-hint">Enter enviar · Shift+Enter nueva línea · ＋ para más opciones · 🎤 voz</div>
     </div>
   </div>
 </div>
@@ -613,7 +620,7 @@ async function sendMsg(){
     if(data&&data.reply){
       var reply=data.reply;
       history.push({role:'assistant',content:reply});
-      addBub('ai',fmt(reply));
+      addBub('ai',fmt(reply));saveMemory();speak(reply);
       document.getElementById('stxt').textContent='en línea';
     }else if(data&&data.error){
       addBub('ai','<span style="color:var(--r)">Error: '+data.error+'</span>');
@@ -643,7 +650,8 @@ function fmt(s){
     .replace(/^### (.+)$/gm,'<h3>$1</h3>')
     .replace(/^- (.+)$/gm,'<li>$1</li>')
     .replace(/(<li>[\s\S]*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';})
-    .replace(/\n/g,'<br>');
+    .replace(/\n/g,'<br>')
+    .replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" style="color:var(--c);text-decoration:underline;">$1</a>');
 }
 function scrollB(){var m=document.getElementById('msgs');if(m)setTimeout(function(){m.scrollTop=m.scrollHeight;},60);}
 function showMsgs(){document.getElementById('welcome').style.display='none';document.getElementById('msgs').style.display='flex';}
@@ -696,6 +704,8 @@ function startApp(){
 
 function applyColor(i){var p=PALETTES[i]||PALETTES[0];var r=document.documentElement.style;r.setProperty('--gr',p.gr);r.setProperty('--r',p.r);r.setProperty('--c',p.c);}
 function updateId(){document.getElementById('tname').textContent=ai.name;document.getElementById('wtitle').textContent='Hola, soy '+ai.name;document.getElementById('sb-credit').textContent=ai.name+' · ANIMATION XD v4.0';applyColor(ai.color);}
+function saveMemory(){try{localStorage.setItem('animix_user',JSON.stringify(user));localStorage.setItem('animix_ai',JSON.stringify({name:ai.name,gender:ai.gender,color:ai.color,persona:ai.persona}));localStorage.setItem('animix_chats',JSON.stringify(chats.slice(0,20)));}catch(e){}}
+function loadMemory(){try{var u=localStorage.getItem('animix_user');var a=localStorage.getItem('animix_ai');var c=localStorage.getItem('animix_chats');if(u)user=JSON.parse(u);if(a){var ad=JSON.parse(a);ai.name=ad.name;ai.gender=ad.gender;ai.color=ad.color||0;ai.persona=ad.persona||'';}if(c)chats=JSON.parse(c);}catch(e){}}
 function newChat(){if(history.length>0){var t=typeof history[0].content==='string'?history[0].content.substring(0,40):'Conversación';chats.unshift({title:t,history:history.slice()});renderHist();}history=[];attach=[];document.getElementById('msgs').innerHTML='';document.getElementById('msgs').style.display='none';document.getElementById('welcome').style.display='flex';document.getElementById('att-row').innerHTML='';setTab('chat');}
 function renderHist(){var el=document.getElementById('hlist');el.innerHTML='';chats.slice(0,30).forEach(function(c,i){var d=document.createElement('div');d.className='hi'+(i===0?' on':'');d.textContent=c.title+'...';d.onclick=function(){history=c.history.slice();document.getElementById('msgs').innerHTML='';showMsgs();history.forEach(function(m){var txt=Array.isArray(m.content)?((m.content.find(function(x){return x.type==='text';})||{}).text||''):m.content;addBub(m.role==='user'?'user':'ai',fmt(txt));});};el.appendChild(d);});}
 function exportChat(){var txt=history.map(function(m){var r=m.role==='user'?(user.name||'Usuario'):ai.name;var c=typeof m.content==='string'?m.content:'[multimedia]';return r+':\n'+c;}).join('\n\n---\n\n');var a=document.createElement('a');a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(txt);a.download='chat.txt';a.click();}
@@ -714,7 +724,39 @@ function setCol(i){sCol=i;updCD();}
 function updCD(){for(var i=0;i<5;i++)document.getElementById('cd'+i).classList.toggle('on',sCol===i);}
 function saveSettings(){ai.name=document.getElementById('s-nm').value.trim()||'ANIMIX';ai.gender=sSG==='f'?'femenino':sSG==='m'?'masculino':'neutral';ai.color=sCol;ai.persona=document.getElementById('s-per').value.trim();updateId();document.getElementById('smod').style.display='none';}
 function toggleTheme(){var r=document.documentElement.style;light=!light;var btn=document.getElementById('tbtheme');if(light){r.setProperty('--bg','#f0f2ff');r.setProperty('--s1','#fff');r.setProperty('--s2','#f4f5ff');r.setProperty('--s3','#eaebff');r.setProperty('--bd','#dde0f0');r.setProperty('--bd2','#c5c8e0');r.setProperty('--tx','#111130');r.setProperty('--t2','#5558a0');r.setProperty('--t3','#9090c0');btn.textContent='☀';}else{r.setProperty('--bg','#07080f');r.setProperty('--s1','#0c0e1a');r.setProperty('--s2','#121422');r.setProperty('--s3','#181b2e');r.setProperty('--bd','#1f2238');r.setProperty('--bd2','#2d3054');r.setProperty('--tx','#f0f2ff');r.setProperty('--t2','#8890bb');r.setProperty('--t3','#3a3f60');btn.textContent='☾';}}
-applyColor(0);setTab('chat');
+loadMemory();// ── VOZ ─────────────────────────────────────────────────────────────────────
+var recognition=null;var voiceActive=false;
+function initVoice(){
+  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){return;}
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  recognition=new SR();recognition.lang='es-AR';recognition.continuous=false;recognition.interimResults=false;
+  recognition.onresult=function(e){var t=e.results[0][0].transcript;document.getElementById('cinp').value=t;voiceActive=false;document.getElementById('micbtn').style.background='transparent';document.getElementById('micbtn').style.color='var(--t2)';};
+  recognition.onerror=function(){voiceActive=false;document.getElementById('micbtn').style.background='transparent';};
+  recognition.onend=function(){voiceActive=false;document.getElementById('micbtn').style.background='transparent';document.getElementById('micbtn').style.color='var(--t2)';};
+}
+function toggleVoice(){
+  if(!recognition){initVoice();}
+  if(!recognition){addBub('ai',fmt('Tu navegador no soporta el micrófono. Probá con Chrome.'));return;}
+  if(voiceActive){recognition.stop();voiceActive=false;document.getElementById('micbtn').style.background='transparent';document.getElementById('micbtn').style.color='var(--t2)';}
+  else{recognition.start();voiceActive=true;document.getElementById('micbtn').style.background='var(--r)';document.getElementById('micbtn').style.color='#fff';}
+}
+// ── VOZ SALIDA (TTS) ─────────────────────────────────────────────────────────
+var ttsEnabled=false;
+function speak(text){
+  if(!ttsEnabled||!window.speechSynthesis)return;
+  window.speechSynthesis.cancel();
+  var u=new SpeechSynthesisUtterance(text.replace(/\*\*/g,'').replace(/<[^>]+>/g,'').substring(0,300));
+  u.lang='es-AR';u.rate=1.05;u.pitch=1.1;
+  window.speechSynthesis.speak(u);
+}
+applyColor(ai.color||0);setTab('chat');if(chats.length>0)renderHist();
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('/sw.js');
+  });
+}
 </script>
 </body>
 </html>

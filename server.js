@@ -617,6 +617,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // /manifest.json
+  if (urlObj.pathname === '/manifest.json') {
+    const fs2 = require('fs');
+    const p = require('path');
+    try {
+      const m = fs2.readFileSync(p.join(__dirname, 'manifest.json'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json', 'Access-Control-Allow-Origin': '*' });
+      res.end(m);
+    } catch(e) { res.writeHead(404); res.end('not found'); }
+    return;
+  }
+
+  // /sw.js
+  if (urlObj.pathname === '/sw.js') {
+    const fs2 = require('fs');
+    const p = require('path');
+    try {
+      const sw = fs2.readFileSync(p.join(__dirname, 'sw.js'), 'utf8');
+      res.writeHead(200, { 'Content-Type': 'application/javascript', 'Access-Control-Allow-Origin': '*' });
+      res.end(sw);
+    } catch(e) { res.writeHead(404); res.end('not found'); }
+    return;
+  }
+
   // / → servir el HTML
   if (urlObj.pathname === '/' || urlObj.pathname === '/index.html') {
     const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.html'));
