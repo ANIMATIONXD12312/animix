@@ -98,6 +98,21 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .gif-badge{position:absolute;bottom:7px;right:8px;background:rgba(0,0,0,.7);border-radius:5px;padding:2px 8px;font-size:10px;color:#fff;font-family:var(--mo);}
 .gif-frame{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
 .genbub{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+/* ── BARRA DE AUDIO ── */
+.audio-bar{display:flex;align-items:center;gap:8px;padding:4px 2px 0;}
+.audio-play-btn{background:transparent;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--t3);font-size:10.5px;font-family:var(--mo);padding:4px 10px 4px 6px;border-radius:20px;transition:all .2s;letter-spacing:.5px;border:1px solid transparent;}
+.audio-play-btn:hover{background:var(--s2);color:var(--c);border-color:var(--bd);}
+.audio-play-btn.playing{color:var(--r);background:rgba(255,58,92,.08);border-color:rgba(255,58,92,.3);}
+.audio-play-btn.loading{color:var(--c);opacity:.7;pointer-events:none;}
+.audio-waves{display:flex;gap:2px;align-items:center;height:12px;}
+.audio-waves span{width:2px;border-radius:1px;background:currentColor;}
+.audio-play-btn.playing .audio-waves span{animation:waveBeat .6s ease-in-out infinite alternate;}
+.audio-waves span:nth-child(1){height:4px;animation-delay:0s;}
+.audio-waves span:nth-child(2){height:9px;animation-delay:.1s;}
+.audio-waves span:nth-child(3){height:6px;animation-delay:.2s;}
+.audio-waves span:nth-child(4){height:11px;animation-delay:.15s;}
+.audio-waves span:nth-child(5){height:5px;animation-delay:.05s;}
+@keyframes waveBeat{from{transform:scaleY(.35);}to{transform:scaleY(1.5);}}
 .gbar{width:100%;height:3px;background:var(--bd);border-radius:2px;overflow:hidden;}
 .gfill{height:100%;background:var(--gr);border-radius:2px;animation:gani 2.5s ease-in-out infinite;}
 @keyframes gani{0%{width:3%;}65%{width:82%;}100%{width:90%;}}
@@ -735,7 +750,16 @@ function addBub(role,html,imgs,files){
   var ex='';
   if(imgs&&imgs.length)imgs.forEach(function(s){ex+='<img src="'+s+'" class="in-img" onclick="openZoom(\''+s.replace(/'/g,"\\'")+'\')">';});
   if(files&&files.length)files.forEach(function(n){ex+='<div class="fchip">📄 '+n+'</div>';});
-  d.innerHTML='<div class="mav">'+av+'</div><div class="mb"><div class="mn">'+nm+'</div><div class="bub">'+ex+html+'</div></div>';
+  if(role!=='user'){
+    var msgId='msg'+Date.now()+Math.floor(Math.random()*1000);
+    d.setAttribute('data-msgid',msgId);
+    var audioBar='<div class="audio-bar"><button class="audio-play-btn" id="abtn-'+msgId+'" onclick="playMsgAudio(this,\''+msgId+'\')">'
+      +'<div class="audio-waves"><span></span><span></span><span></span><span></span><span></span></div>'
+      +'<span class="abtn-label">Escuchar</span></button></div>';
+    d.innerHTML='<div class="mav">'+av+'</div><div class="mb"><div class="mn">'+nm+'</div>'+audioBar+'<div class="bub" id="bub-'+msgId+'">'+ex+html+'</div></div>';
+  } else {
+    d.innerHTML='<div class="mav">'+av+'</div><div class="mb"><div class="mn">'+nm+'</div><div class="bub">'+ex+html+'</div></div>';
+  }
   m.appendChild(d);scrollB();return d;
 }
 function showTyp(){return addBub('ai','<div class="typing"><span></span><span></span><span></span></div>');}
@@ -808,12 +832,14 @@ var ttsEnabled=false;
 const ELEVENLABS_CONFIGURED = true;
 
 // Voces ElevenLabs por género:
-// ANIMIX (femenino) → Rachel - voz femenina clara
-// ANIMAX (masculino) → Adam - voz masculina profunda
 const VOICE_IDS = {
-  femenino: 'XrExE9yKIg1WjnnlVkGX', // Matilda - mujer, neutro español
-  masculino: 'pNInz6obpgDQGcFmaJgB', // Adam - hombre, neutro
+  femenino: 'XrExE9yKIg1WjnnlVkGX', // Matilda - mujer
+  masculino: 'pNInz6obpgDQGcFmaJgB', // Adam - hombre
 };
+
+// Audio activo global
+var activeAudio = null;
+var activeBtn = null;
 
 async function speakElevenLabs(text) {
   try {
@@ -831,33 +857,81 @@ async function speakElevenLabs(text) {
     audio.onended = () => URL.revokeObjectURL(url);
     return audio;
   } catch(e) {
-    console.warn('[TTS] ElevenLabs falló, usando speechSynthesis:', e.message);
+    console.warn('[TTS] ElevenLabs falló:', e.message);
     return null;
   }
 }
 
 function speakFallback(text) {
-  if (!window.speechSynthesis) return;
+  if (!window.speechSynthesis) return null;
   window.speechSynthesis.cancel();
   const clean = text.replace(/\*\*/g,'').replace(/<[^>]+>/g,'').substring(0,300);
   const u = new SpeechSynthesisUtterance(clean);
   u.lang = 'es-ES';
-  // Efecto robótico con Web Speech API
-  if (ai.gender === 'masculino') {
-    u.pitch = 0.4; u.rate = 0.88; // voz grave y lenta → ANIMAX
-  } else {
-    u.pitch = 1.6; u.rate = 1.05; // voz aguda y fluida → ANIMIX
-  }
+  if (ai.gender === 'masculino') { u.pitch = 0.4; u.rate = 0.88; }
+  else { u.pitch = 1.6; u.rate = 1.05; }
   window.speechSynthesis.speak(u);
+  return null;
 }
 
+// Botón ▶ Escuchar en cada mensaje
+async function playMsgAudio(btn, msgId) {
+  // Si ya está reproduciendo este mismo, pausar
+  if (activeAudio && activeBtn === btn) {
+    activeAudio.pause();
+    activeAudio = null;
+    btn.classList.remove('playing');
+    btn.querySelector('.abtn-label').textContent = 'Escuchar';
+    activeBtn = null;
+    return;
+  }
+  // Parar el anterior si hay uno
+  if (activeAudio) {
+    activeAudio.pause();
+    if (activeBtn) { activeBtn.classList.remove('playing'); activeBtn.querySelector('.abtn-label').textContent = 'Escuchar'; }
+    activeAudio = null; activeBtn = null;
+  }
+  // Obtener texto del mensaje
+  var bubEl = document.getElementById('bub-'+msgId);
+  if (!bubEl) return;
+  var text = bubEl.innerText || bubEl.textContent || '';
+  if (!text.trim()) return;
+
+  btn.classList.add('loading');
+  btn.querySelector('.abtn-label').textContent = 'Cargando...';
+
+  const audio = await speakElevenLabs(text);
+  btn.classList.remove('loading');
+
+  if (audio) {
+    activeAudio = audio;
+    activeBtn = btn;
+    btn.classList.add('playing');
+    btn.querySelector('.abtn-label').textContent = 'Reproduciendo';
+    audio.play();
+    audio.onended = () => {
+      btn.classList.remove('playing');
+      btn.querySelector('.abtn-label').textContent = 'Escuchar';
+      if (activeAudio === audio) { activeAudio = null; activeBtn = null; }
+      URL.revokeObjectURL(audio.src);
+    };
+  } else {
+    // fallback Web Speech
+    btn.querySelector('.abtn-label').textContent = 'Escuchar';
+    speakFallback(text);
+  }
+}
+
+// Speak automático cuando 🔊 está activo
 function speak(text){
-  if(!ttsEnabled) return;
-  const clean = text.replace(/\*\*/g,'').replace(/<[^>]+>/g,'').substring(0,600);
-  speakElevenLabs(clean).then(audio => {
-    if (audio) { audio.play(); }
-    else { speakFallback(clean); }
-  });
+  if (!ttsEnabled) return;
+  // buscar el último botón de audio y simularlo
+  var btns = document.querySelectorAll('.audio-play-btn');
+  if (btns.length > 0) {
+    var last = btns[btns.length - 1];
+    var msgId = last.id.replace('abtn-','');
+    setTimeout(() => playMsgAudio(last, msgId), 300);
+  }
 }
 
 // ── SISTEMA DE LLAMADA DE VOZ ─────────────────────────────────────────────────
