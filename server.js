@@ -533,28 +533,243 @@ async function transcribeAudio(audioBuffer, mimeType) {
 // ─── Motor de Voz: ElevenLabs TTS ────────────────────────────────────────────
 const ELEVENLABS_KEY = process.env.ELEVENLABS_KEY || '';
 
-// Voces por defecto según género
+// Voces custom por género (se crean al iniciar si no existen en env)
 const VOICE_MAP = {
-  femenino: 'XrExE9yKIg1WjnnlVkGX', // Matilda — mujer, español neutro → ANIMIX
-  masculino: 'pNInz6obpgDQGcFmaJgB', // Adam   — hombre, profundo      → ANIMAX
+  femenino: process.env.ANIMIX_VOICE_ID || 'XrExE9yKIg1WjnnlVkGX',
+  masculino: process.env.ANIMAX_VOICE_ID || 'pNInz6obpgDQGcFmaJgB',
 };
+
+// ─── Voice Design: crear voces custom al iniciar ────────────────────────────
+async function createCustomVoice(name, description, previewText) {
+  if (!ELEVENLABS_KEY) return null;
+  console.log(`[VOICE] Creando voz custom: ${name}...`);
+  const body = JSON.stringify({
+    voice_description: description,
+    text: previewText,
+    model_id: 'eleven_multilingual_ttv_v2',
+    auto_generate_text: false,
+    loudness: 0,
+    guidance_scale: 6,
+    seed: 42,
+  });
+  return new Promise((resolve) => {
+    const opts = {
+      hostname: 'api.elevenlabs.io',
+      path: '/v1/text-to-voice/create-previews',
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_KEY,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+      timeout: 45000,
+    };
+    const req = https.request(opts, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', async () => {
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString());
+          const preview = data.previews && data.previews[0];
+          if (!preview || !preview.generated_voice_id) { resolve(null); return; }
+          const voiceId = await saveCustomVoice(preview.generated_voice_id, name);
+          console.log(`[VOICE] ✓ ${name} creada con ID: ${voiceId}`);
+          resolve(voiceId);
+        } catch(e) { console.log(`[VOICE] Error: ${e.message}`); resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.write(body); req.end();
+  });
+}
+
+async function saveCustomVoice(generatedVoiceId, name) {
+  const body = JSON.stringify({ voice_name: name, voice_description: name + ' — ANIMIX custom voice' });
+  return new Promise((resolve) => {
+    const opts = {
+      hostname: 'api.elevenlabs.io',
+      path: `/v1/text-to-voice/create-voice-from-preview`,
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_KEY,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+      timeout: 20000,
+    };
+    const reqBody = JSON.stringify({ generated_voice_id: generatedVoiceId, voice_name: name });
+    const opts2 = { ...opts };
+    opts2.headers['Content-Length'] = Buffer.byteLength(reqBody);
+    const req = https.request(opts2, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        try {
+          const d = JSON.parse(Buffer.concat(chunks).toString());
+          resolve(d.voice_id || generatedVoiceId);
+        } catch(e) { resolve(generatedVoiceId); }
+      });
+    });
+    req.on('error', () => resolve(generatedVoiceId));
+    req.on('timeout', () => { req.destroy(); resolve(generatedVoiceId); });
+    req.write(reqBody); req.end();
+  });
+}
+
+// Inicializar voces custom al arrancar (si hay key y no hay IDs guardados)
+async function initCustomVoices() {
+  if (!ELEVENLABS_KEY) { console.log('[VOICE] Sin ELEVENLABS_KEY, usando voces por defecto'); return; }
+  if (process.env.ANIMIX_VOICE_ID && process.env.ANIMAX_VOICE_ID) {
+    console.log('[VOICE] Voces custom ya configuradas en env vars'); return;
+  }
+  // ANIMIX: mujer joven latinoamericana, cálida y expresiva
+  const animixDesc = 'A young Latin American woman in her mid-20s with a warm, clear, expressive voice. Neutral Spanish accent, natural intonation, friendly and intelligent tone. Studio quality audio.';
+  const animixPreview = 'Hola, soy ANIMIX. Estoy aquí para ayudarte con lo que necesites. Me emociona poder charlar con vos hoy.';
+  // ANIMAX: hombre joven latinoamericano, profundo y carismático
+  const animaxDesc = 'A young Latin American man in his early 20s with a deep, charismatic voice. Neutral Spanish accent, confident and warm delivery, natural pacing. Studio quality audio.';
+  const animaxPreview = 'Hola, soy ANIMAX. Contame qué necesitás y lo resolvemos juntos. Estoy listo para lo que sea.';
+
+  const [animixId, animaxId] = await Promise.all([
+    createCustomVoice('ANIMIX_voice', animixDesc, animixPreview),
+    createCustomVoice('ANIMAX_voice', animaxDesc, animaxPreview),
+  ]);
+  if (animixId) VOICE_MAP.femenino = animixId;
+  if (animaxId) VOICE_MAP.masculino = animaxId;
+  console.log(`[VOICE] Voces activas → ANIMIX: ${VOICE_MAP.femenino} | ANIMAX: ${VOICE_MAP.masculino}`);
+}
+
+// ─── Procesador de texto humano ──────────────────────────────────────────────
+function humanizeText(text, emotion) {
+  let t = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').trim();
+
+  // 1. Muletillas naturales según emoción (solo en oraciones largas)
+  const muletillas = {
+    neutro:    ['O sea, ', 'Mirá, ', 'La verdad, ', 'Fijate que ', ''],
+    feliz:     ['¡Uy, ', 'La verdad que ', 'Te juro que ', '¡Mirá, '],
+    triste:    ['La verdad... ', 'O sea... ', 'No sé... ', 'Ehh... '],
+    enojado:   ['Mirá, ', 'Escuchame, ', 'La verdad, ', 'O sea, '],
+    emocionado:['¡Uy! ', '¡Mirá esto! ', '¡No puedo creer! ', '¡Espera! '],
+    aburrido:  ['Bue... ', 'Ehhh... ', 'Y... ', 'Dale... '],
+    misterioso:['Hmm... ', 'Interesante... ', 'Fijate que... ', 'Curioso... '],
+    alarmado:  ['¡Ojo! ', '¡Esperá! ', '¡Atención! ', 'Cuidado, '],
+    sarcastico:['Ah, claro... ', 'Sí, seguro... ', 'Obvio, '],
+  };
+  const list = muletillas[emotion] || muletillas.neutro;
+  // Agregar muletilla al inicio solo si la frase es medianamente larga
+  if (t.length > 60 && Math.random() < 0.55) {
+    const m = list[Math.floor(Math.random() * list.length)];
+    if (m) t = m + t.charAt(0).toLowerCase() + t.slice(1);
+  }
+
+  // 2. Pausas naturales con <break> (SSML-like para eleven_v3)
+  // Pausas después de comas
+  t = t.replace(/,\s+/g, ', <break time="0.2s"/> ');
+  // Pausa larga después de punto seguido en oraciones
+  t = t.replace(/\.\s+([A-ZÁÉÍÓÚÑ¿¡])/g, '. <break time="0.4s"/> $1');
+  // Puntos suspensivos = pausa dramática
+  t = t.replace(/\.\.\./g, '... <break time="0.5s"/> ');
+
+  // 3. Respiración al inicio de textos largos
+  if (t.length > 120) {
+    t = '<break time="0.15s"/> ' + t;
+  }
+
+  // 4. Variación de velocidad en partes emocionales
+  const prosodyByEmotion = {
+    feliz:      { rate: '108%', pitch: '+8%' },
+    emocionado: { rate: '115%', pitch: '+12%' },
+    triste:     { rate: '85%',  pitch: '-6%' },
+    enojado:    { rate: '105%', pitch: '+5%' },
+    aburrido:   { rate: '90%',  pitch: '-10%' },
+    misterioso: { rate: '92%',  pitch: '-3%' },
+    alarmado:   { rate: '112%', pitch: '+7%' },
+    sarcastico: { rate: '95%',  pitch: '-2%' },
+    neutro:     { rate: '100%', pitch: '0%' },
+  };
+  const p = prosodyByEmotion[emotion] || prosodyByEmotion.neutro;
+  // Envolver en prosody SSML
+  t = `<prosody rate="${p.rate}" pitch="${p.pitch}">${t}</prosody>`;
+  // Wrap en <speak> para SSML completo
+  t = `<speak>${t}</speak>`;
+
+  return t;
+}
+
+// ─── Detección de emoción mejorada ──────────────────────────────────────────
+function detectEmotion(text) {
+  const t = text.toLowerCase();
+  const scores = { feliz:0, emocionado:0, triste:0, enojado:0, aburrido:0, misterioso:0, alarmado:0, sarcastico:0 };
+
+  // FELIZ
+  if (/(!{2,}|\bjaja|\bjeje|\bgenial\b|\bexcelente\b|\bperfecto\b|\bincreíble\b|\bme alegr|\bfantástic|\bmaravill|\bencant|\bbuenísim|\bchévere\b|\bqué bien\b|\bqué bueno\b)/.test(t)) scores.feliz += 2;
+  if (/😄|😊|🥰|😁|❤|✨/.test(text)) scores.feliz += 1;
+
+  // EMOCIONADO
+  if (/(\bimpresionant|\bincreíbl|\balucinan|\bespectacular|\bepic|\bflipan|\bno lo puedo creer|\bexplota|\bwow\b)/.test(t)) scores.emocionado += 2;
+  if (/🤩|🔥|💥|⚡/.test(text)) scores.emocionado += 1;
+
+  // TRISTE
+  if (/(\blo siento\b|\bperdón\b|\blamentabl|\btriste\b|\bdesafortun|\bpena\b|\bduele\b|\bimposible\b|\bme duele\b|\bcomprendo tu dolor\b|\bno pude\b|\bfalló\b)/.test(t)) scores.triste += 2;
+  if (/😢|😔|💔|😞/.test(text)) scores.triste += 1;
+
+  // ENOJADO
+  if (/(\bincorrecto\b|\binaceptable\b|\bfrustran|\bbasta\b|\bharto\b|\bno funciona\b|\bmal hecho\b|\bme molesta\b|\bdeja de\b)/.test(t)) scores.enojado += 2;
+  if (/😠|😡|🤬/.test(text)) scores.enojado += 1;
+
+  // ABURRIDO
+  if (/(\bda igual\b|\bcomo sea\b|\blo que quieras\b|\blo que vos digas\b|\bbueno\.\.\.\b|\bmmm\b|\bno sé\b)/.test(t)) scores.aburrido += 2;
+  if (/😑|🥱|😐/.test(text)) scores.aburrido += 1;
+
+  // MISTERIOSO
+  if (/(\binteresante\b|\bcurioso\b|\bextraño\b|\braro\b|\bmisterio\b|\breflexion|\banaliz|\bpregunta profunda\b|\bno está claro\b)/.test(t)) scores.misterioso += 2;
+  if (/🤔|🧐|🔍/.test(text)) scores.misterioso += 1;
+
+  // ALARMADO
+  if (/(\bcuidado\b|\batención\b|\bpeligro\b|\balerta\b|\burgente\b|\bpeligroso\b|\bimportante advertencia\b)/.test(t)) scores.alarmado += 2;
+  if (/⚠|🚨|❗/.test(text)) scores.alarmado += 1;
+
+  // SARCÁSTICO
+  if (/(claro que sí|por supuesto|qué sorpresa|vaya vaya|oh vaya|como no)/.test(t) && t.includes('...')) scores.sarcastico += 3;
+
+  // Ganador
+  const winner = Object.entries(scores).sort((a,b) => b[1]-a[1])[0];
+  return winner[1] > 0 ? winner[0] : 'neutro';
+}
 
 async function synthesizeSpeech(text, voiceId, gender) {
   if (!ELEVENLABS_KEY) throw new Error('ELEVENLABS_KEY no configurada');
-  const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').substring(0, 800);
 
-  // Configuración de voz robótica por género
-  const isMasc = gender === 'masculino';
-  const voiceSettings = isMasc
-    ? { stability: 0.85, similarity_boost: 0.45, style: 0.0, use_speaker_boost: false }  // ANIMAX: grave, estable, robótico
-    : { stability: 0.75, similarity_boost: 0.55, style: 0.05, use_speaker_boost: true };  // ANIMIX: claro, femenino, suave
-
+  const emotion = detectEmotion(text);
+  const humanText = humanizeText(text, emotion);
   const selectedVoice = voiceId || VOICE_MAP[gender] || VOICE_MAP.femenino;
 
+  console.log(`[TTS] Emoción: ${emotion} | Voz: ${selectedVoice} | Género: ${gender}`);
+
+  // Configuración de voz por emoción y género
+  const isMasc = gender === 'masculino';
+  const voiceConfigs = {
+    feliz:      { stability: isMasc?0.32:0.28, similarity_boost: isMasc?0.78:0.82, style: isMasc?0.68:0.72 },
+    emocionado: { stability: isMasc?0.22:0.18, similarity_boost: isMasc?0.82:0.88, style: isMasc?0.82:0.88 },
+    triste:     { stability: isMasc?0.82:0.78, similarity_boost: isMasc?0.58:0.62, style: isMasc?0.18:0.22 },
+    enojado:    { stability: isMasc?0.28:0.22, similarity_boost: isMasc?0.92:0.90, style: isMasc?0.88:0.90 },
+    aburrido:   { stability: isMasc?0.94:0.92, similarity_boost: isMasc?0.38:0.42, style: isMasc?0.02:0.03 },
+    misterioso: { stability: isMasc?0.68:0.65, similarity_boost: isMasc?0.70:0.72, style: isMasc?0.42:0.48 },
+    alarmado:   { stability: isMasc?0.25:0.22, similarity_boost: isMasc?0.90:0.88, style: isMasc?0.78:0.80 },
+    sarcastico: { stability: isMasc?0.48:0.45, similarity_boost: isMasc?0.72:0.74, style: isMasc?0.62:0.65 },
+    neutro:     { stability: isMasc?0.65:0.60, similarity_boost: isMasc?0.70:0.75, style: isMasc?0.18:0.22 },
+  };
+  const vc = voiceConfigs[emotion] || voiceConfigs.neutro;
+
   const body = JSON.stringify({
-    text: clean,
-    model_id: 'eleven_multilingual_v2',
-    voice_settings: voiceSettings
+    text: humanText,
+    model_id: 'eleven_v3',           // ← más expresivo y emocional disponible
+    voice_settings: {
+      stability: vc.stability,
+      similarity_boost: vc.similarity_boost,
+      style: vc.style,
+      use_speaker_boost: true,
+    }
   });
 
   return new Promise((resolve, reject) => {
@@ -568,17 +783,19 @@ async function synthesizeSpeech(text, voiceId, gender) {
         'Accept': 'audio/mpeg',
         'Content-Length': Buffer.byteLength(body),
       },
-      timeout: 30000,
+      timeout: 35000,
     };
     const req = https.request(opts, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
         if (res.statusCode === 200) {
-          resolve({ buffer: Buffer.concat(chunks), contentType: 'audio/mpeg' });
+          resolve({ buffer: Buffer.concat(chunks), contentType: 'audio/mpeg', emotion });
         } else {
-          const err = Buffer.concat(chunks).toString().substring(0, 200);
-          reject(new Error(`ElevenLabs ${res.statusCode}: ${err}`));
+          // Fallback a turbo si v3 falla
+          const err = Buffer.concat(chunks).toString();
+          console.log(`[TTS] eleven_v3 falló (${res.statusCode}), intentando turbo...`);
+          synthesizeSpeechFallback(humanText, selectedVoice, vc, emotion).then(resolve).catch(reject);
         }
       });
     });
@@ -587,6 +804,43 @@ async function synthesizeSpeech(text, voiceId, gender) {
     req.write(body); req.end();
   });
 }
+
+// Fallback con eleven_turbo_v2_5 si v3 no está disponible en el plan
+async function synthesizeSpeechFallback(text, voiceId, vc, emotion) {
+  // En fallback, quitar SSML y usar texto limpio con audio tag
+  const emotionTags = {
+    feliz:'[cheerfully] ', emocionado:'[excitedly] ', triste:'[sadly] ',
+    enojado:'[angrily] ', aburrido:'[monotonously] ', misterioso:'[mysteriously] ',
+    alarmado:'[urgently] ', sarcastico:'[sarcastically] ', neutro:''
+  };
+  const cleanText = (emotionTags[emotion]||'') + text.replace(/<[^>]+>/g,'').replace(/\[.*?\]/g,'').trim();
+  const body = JSON.stringify({
+    text: cleanText,
+    model_id: 'eleven_turbo_v2_5',
+    voice_settings: { stability: vc.stability, similarity_boost: vc.similarity_boost, style: vc.style, use_speaker_boost: true }
+  });
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: 'api.elevenlabs.io',
+      path: `/v1/text-to-speech/${voiceId}`,
+      method: 'POST',
+      headers: { 'xi-api-key': ELEVENLABS_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg', 'Content-Length': Buffer.byteLength(body) },
+      timeout: 30000,
+    };
+    const req = https.request(opts, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        if (res.statusCode === 200) resolve({ buffer: Buffer.concat(chunks), contentType: 'audio/mpeg', emotion });
+        else reject(new Error(`TTS fallback ${res.statusCode}`));
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout fallback')); });
+    req.write(body); req.end();
+  });
+}
+
 
 // ─── Servidor HTTP ───────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
@@ -632,6 +886,7 @@ const server = http.createServer(async (req, res) => {
           'Content-Type': result.contentType,
           'Content-Length': result.buffer.length,
           'Access-Control-Allow-Origin': '*',
+          'X-Emotion': result.emotion || 'neutro',
         });
         res.end(result.buffer);
       } catch(e) {
@@ -830,6 +1085,8 @@ server.listen(PORT, () => {
   console.log('║  Imágenes: Pollinations+Horde+Replicate     ║');
   console.log('║  Para cerrar: Ctrl + C                      ║');
   console.log('╚══════════════════════════════════════════════╝\n');
+  // Inicializar voces custom de ElevenLabs en background
+  initCustomVoices().catch(e => console.log('[VOICE] Error init:', e.message));
   try { require('child_process').exec('start http://localhost:' + PORT); } catch (e) {}
 });
 

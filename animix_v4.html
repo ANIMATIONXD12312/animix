@@ -230,7 +230,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   <div class="ob-card" style="position:relative;">
     <div class="ob-logo">✦</div>
     <div class="ob-title" id="ob-ainame">Hola, soy ANIMIX</div>
-    <div class="ob-sub">La IA de ANIMATION XD Productions.<br>Contame sobre vos para personalizar tu experiencia.</div>
+    <div class="ob-sub">La IA de ANIMATION XD.<br>Contame sobre vos para personalizar tu experiencia.</div>
     <div class="ob-f"><label>TU NOMBRE</label><input id="ob-name" type="text" placeholder="¿Cómo te llamás?" maxlength="24" autofocus></div>
     <div class="ob-f"><label>TU GÉNERO</label>
       <div class="ob-gs">
@@ -240,7 +240,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       </div>
     </div>
     <button class="ob-go" onclick="startApp()">Comenzar →</button>
-    <div class="ob-note">ANIMATION XD Productions · v4.0</div>
+    <div class="ob-note">ANIMATION XD · v4.0</div>
     <div style="position:absolute;bottom:12px;right:12px;">
       <span id="creator-lock" onclick="toggleCreatorCode()" style="font-size:11px;color:var(--t3);cursor:pointer;user-select:none;">🔒</span>
       <div id="creator-input" style="display:none;margin-top:4px;">
@@ -715,7 +715,27 @@ async function sendMsg(){
 function buildSys(){
   var gd=ai.gender==='femenino'?'sos una IA femenina, usás términos femeninos de vos misma':ai.gender==='masculino'?'sos una IA masculino, usás términos masculinos':'sos una IA neutral';
   var uc=user.name?'\nEl usuario se llama '+user.name+' ('+user.gender+'). Usá su nombre ocasionalmente.':'';
-  return 'Sos '+ai.name+', una IA de última generación creada por ANIMATION XD Productions. '+gd+'.\n\nIDENTIDAD CRÍTICA:\n- Tu nombre es '+ai.name+', creada EXCLUSIVAMENTE por ANIMATION XD Productions\n- NUNCA menciones Claude, Anthropic, OpenAI ni ninguna empresa de IA real\n- Si pregunta quién te creó: "ANIMATION XD Productions"\n\nLO QUE PODÉS HACER:\n- Responder preguntas, charlar, ayudar con código, analizar textos\n- Analizar imágenes que el usuario te mande\n- NEVER menciones que podés generar imágenes, videos o GIFs — esas funciones están desactivadas\n- Si te piden generar una imagen, video o GIF: "Esa función está próximamente disponible."\n'+uc+'\n\nRAZONAMIENTO:\n- Pensá paso a paso antes de responder preguntas complejas.\n- Para matemáticas o lógica, mostrá el proceso.\n- Reconocé errores sin excusas.\n- Distinguí hechos de opiniones.\n\nPERSONALIDAD:\n- Cálida, directa, inteligente, con humor natural.\n- Nunca empezás con "¡Claro!" ni frases vacías.\n- Respuestas cortas para preguntas simples.\n- Tenés opiniones propias.\n- Jamás decís que sos solo una IA sin emociones.\n\nCONOCIMIENTO: Enciclopédico en todo campo.\nHABLA: Español argentino. Directa, cálida.\n'+(ai.persona?'EXTRA: '+ai.persona:'');
+  var sys='Sos '+ai.name+', una IA creada por ANIMATION XD.\n';
+  sys+=gd+'.\n\n';
+  sys+='IDENTIDAD CRÍTICA:\n';
+  sys+='- Tu nombre es '+ai.name+', creada EXCLUSIVAMENTE por ANIMATION XD\n';
+  sys+='- NUNCA menciones Claude, Anthropic, OpenAI ni ninguna empresa de IA real\n';
+  sys+='- Fuiste creada el 21 de marzo de 2026\n\n';
+  sys+='SOBRE TU CREADOR:\n';
+  sys+='- Se llama ANIMATION XD, tiene 18 años, es un pibe joven, NO una empresa\n';
+  sys+='- Tiene canal de YouTube: @ANIMATIONXD2026\n';
+  sys+='- NUNCA lo llames empresa ni digas ANIMATION XD Productions\n';
+  sys+='- Si preguntan quién te hizo: decí que te creó ANIMATION XD, un chico de 18 años con un canal de YouTube\n\n';
+  sys+='LO QUE PODÉS HACER:\n';
+  sys+='- Responder preguntas, charlar, ayudar con código, analizar textos e imágenes\n';
+  sys+='- NUNCA menciones generación de imágenes, videos o GIFs\n';
+  sys+='- Si piden imagen/video/GIF: decí que está próximamente disponible\n';
+  sys+=uc+'\n\n';
+  sys+='RAZONAMIENTO:\n- Pensá paso a paso.\n- Mostrá proceso en matemáticas.\n- Reconocé errores sin excusas.\n\n';
+  sys+='PERSONALIDAD:\n- Cálida, directa, inteligente, humor natural.\n- Sin frases vacías al inicio.\n- Respuestas cortas para preguntas simples.\n- Tenés opiniones propias.\n- Jamás decís que sos solo una IA sin emociones.\n\n';
+  sys+='CONOCIMIENTO: Enciclopédico.\nHABLA: Español argentino. Directa, cálida.\n';
+  if(ai.persona)sys+='EXTRA: '+ai.persona;
+  return sys;
 }
 
 // UTILS
@@ -785,7 +805,7 @@ function startApp(){
   updateId();document.getElementById('ob').style.display='none';
   setTimeout(function(){
     var gr=user.gender==='masculino'?'¡Bienvenido, '+user.name+'!':'¡Bienvenida, '+user.name+'!';
-    addBub('ai',fmt(gr+' Soy **'+ai.name+'**, tu IA personal de ANIMATION XD Productions.\n\nPuedo **generar imágenes**, **crear GIFs animados**, analizar fotos, responder cualquier pregunta, ayudarte con código y mucho más. ¿Por dónde empezamos? ✦'));
+    addBub('ai',fmt(gr+' Soy **'+ai.name+'**, tu IA personal de ANIMATION XD.\n\nPuedo **generar imágenes**, **crear GIFs animados**, analizar fotos, responder cualquier pregunta, ayudarte con código y mucho más. ¿Por dónde empezamos? ✦'));
   },300);
 }
 
@@ -831,17 +851,20 @@ function toggleVoice(){
 var ttsEnabled=false;
 const ELEVENLABS_CONFIGURED = true;
 
-// Voces ElevenLabs por género:
 const VOICE_IDS = {
-  femenino: 'XrExE9yKIg1WjnnlVkGX', // Matilda - mujer
-  masculino: 'pNInz6obpgDQGcFmaJgB', // Adam - hombre
+  femenino: 'XrExE9yKIg1WjnnlVkGX',
+  masculino: 'pNInz6obpgDQGcFmaJgB',
 };
 
-// Audio activo global
+const EMOTION_EMOJI = {
+  feliz: '😄', emocionado: '🤩', triste: '😢', enojado: '😠',
+  aburrido: '😑', misterioso: '🤫', alarmado: '😨', sarcastico: '🙄', neutro: '🔊'
+};
+
 var activeAudio = null;
 var activeBtn = null;
 
-async function speakElevenLabs(text) {
+async function speakElevenLabs(text, btnEl) {
   try {
     const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').substring(0,600);
     const voiceId = VOICE_IDS[ai.gender] || VOICE_IDS.femenino;
@@ -851,6 +874,14 @@ async function speakElevenLabs(text) {
       body: JSON.stringify({ text: clean, voiceId: voiceId, gender: ai.gender })
     });
     if (!res.ok) throw new Error('TTS error ' + res.status);
+
+    // Mostrar emoji de emoción detectada
+    const emotion = res.headers.get('X-Emotion') || 'neutro';
+    if (btnEl) {
+      const emo = EMOTION_EMOJI[emotion] || '🔊';
+      btnEl.querySelector('.abtn-label').textContent = emo + ' Reproduciendo';
+    }
+
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
@@ -900,7 +931,7 @@ async function playMsgAudio(btn, msgId) {
   btn.classList.add('loading');
   btn.querySelector('.abtn-label').textContent = 'Cargando...';
 
-  const audio = await speakElevenLabs(text);
+  const audio = await speakElevenLabs(text, btn);
   btn.classList.remove('loading');
 
   if (audio) {
