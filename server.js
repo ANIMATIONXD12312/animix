@@ -929,8 +929,6 @@ server.listen(PORT, () => {
   console.log('║  Imágenes: Pollinations+Horde+Replicate     ║');
   console.log('║  Para cerrar: Ctrl + C                      ║');
   console.log('╚══════════════════════════════════════════════╝\n');
-  // Inicializar voces custom de ElevenLabs en background
-  initCustomVoices().catch(e => console.log('[VOICE] Error init:', e.message));
   try { require('child_process').exec('start http://localhost:' + PORT); } catch (e) {}
 });
 
