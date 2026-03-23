@@ -957,6 +957,9 @@ async function speakElevenLabs(text, btnEl) {
   try {
     const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').substring(0,600);
     const voiceId = VOICE_IDS[ai.gender] || VOICE_IDS.femenino;
+
+    // Usar streaming — empieza a reproducir mientras llega el audio
+    // Truco: fetch con streaming + ReadableStream → MediaSource
     const res = await fetch('/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -964,17 +967,46 @@ async function speakElevenLabs(text, btnEl) {
     });
     if (!res.ok) throw new Error('TTS error ' + res.status);
 
-    // Mostrar emoji de emoción detectada
     const emotion = res.headers.get('X-Emotion') || 'neutro';
     if (btnEl) {
       const emo = EMOTION_EMOJI[emotion] || '🔊';
       btnEl.querySelector('.abtn-label').textContent = emo + ' Reproduciendo';
     }
 
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    // Streaming: leer chunks y reproducir apenas llegan
+    const reader = res.body.getReader();
+    const chunks = [];
+    
+    // Leer primer chunk rápido para empezar reproducción
+    const firstChunk = await reader.read();
+    if (firstChunk.done || !firstChunk.value) throw new Error('empty');
+    chunks.push(firstChunk.value);
+
+    // Reproducir con lo que ya llegó mientras seguimos leyendo
+    const firstBlob = new Blob(chunks, { type: 'audio/mpeg' });
+    const url = URL.createObjectURL(firstBlob);
     const audio = new Audio(url);
-    audio.onended = () => URL.revokeObjectURL(url);
+
+    // Seguir leyendo en background y actualizar el src cuando tengamos todo
+    (async () => {
+      while(true) {
+        const { done, value } = await reader.read();
+        if(done) break;
+        chunks.push(value);
+      }
+      // Reemplazar con audio completo para evitar cortes
+      const fullBlob = new Blob(chunks, { type: 'audio/mpeg' });
+      const fullUrl = URL.createObjectURL(fullBlob);
+      const currentTime = audio.currentTime;
+      if(!audio.ended && !audio.paused) {
+        audio.src = fullUrl;
+        audio.currentTime = currentTime;
+        audio.play().catch(()=>{});
+      }
+      URL.revokeObjectURL(url);
+      audio.onended = () => URL.revokeObjectURL(fullUrl);
+    })();
+
     return audio;
   } catch(e) {
     console.warn('[TTS] ElevenLabs falló:', e.message);
@@ -1090,9 +1122,21 @@ function openCallModal() {
 
 function closeCallModal() {
   callActive = false;
+  callAITalking = false;
   document.getElementById('callModal').classList.remove('open');
   stopCallMic();
-  if (callCurrentAudio) { callCurrentAudio.pause(); callCurrentAudio = null; }
+  // Parar TODO audio activo
+  if (callCurrentAudio) {
+    callCurrentAudio.pause();
+    callCurrentAudio.src = '';
+    callCurrentAudio = null;
+  }
+  if (activeAudio) {
+    activeAudio.pause();
+    activeAudio.src = '';
+    activeAudio = null;
+  }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
   if (callAnimFrame) { cancelAnimationFrame(callAnimFrame); callAnimFrame = null; }
 }
 
