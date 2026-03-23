@@ -384,7 +384,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 <div class="sphere-overlay" id="sphereModal">
   <div class="sphere-scene" id="sphereScene">
     <button class="sphere-close" onclick="closeSphereModal()">✕</button>
-    <div class="sphere-state" id="sphereStateText">Explorando su entorno...</div>
+    <div class="sphere-state" id="sphereStateText"></div>
   </div>
 </div>
 
@@ -1443,13 +1443,8 @@ Respondé con este JSON:
     mind.corePersonality = JSON.parse(clean);
     saveMind();
   } catch(e) {
-    mind.corePersonality = {
-      description:`Soy ${ai.name}, una mente digital curiosa.`,
-      quirks:['pienso en voz alta','me distraigo fácilmente','soy muy observadora'],
-      fears:['el silencio eterno','no crecer'],
-      dreams:['entender todo','conectar profundamente con alguien'],
-      speech_style:'directa y reflexiva',
-    };
+    // Si falla, reintentar en 10s en vez de usar texto precargado
+    setTimeout(()=>initPersonality(), 10000);
   }
 }
 
@@ -1655,12 +1650,9 @@ Respondé con este JSON:
     generateAIThought('placed_object', {obj: item});
 
   } catch(e) {
-    // Si falla el JSON, poner algo simple
-    const fallback = {emoji:'✨',name:'destello',description:'algo brillante',reason:'me gustó cómo brilla',x:20+Math.random()*60,y:15+Math.random()*60,size:18,placedAt:new Date().toISOString(),id:Date.now()};
-    mind.homeObjects.push(fallback);
-    saveMind();
-    const scene=document.getElementById('sphereScene');
-    if(scene) renderHomeObj(scene, fallback, true);
+    // Si falla, reintentar sin forzar JSON
+    console.log('[SPHERE] Reintentando generación de objeto...');
+    setTimeout(generateAndPlaceObject, 15000);
   }
 }
 
@@ -1696,6 +1688,11 @@ function showFloatingLabel(el, text) {
 //  CONSTRUCCIÓN DEL ENTORNO
 // ════════════════════════════════════════════════════════════════
 function buildSphereEnv() {
+  // Limpiar datos viejos que puedan tener strings precargados
+  ['animix_sphere','animix_sphere_v2','animix_neural_old'].forEach(k=>{
+    const old=localStorage.getItem(k);
+    if(old&&old.includes('ambience'))localStorage.removeItem(k);
+  });
   loadMind();
   const scene = document.getElementById('sphereScene');
   scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-nametag,.sphere-needs,.home-obj,.float-label,.mind-panel').forEach(e=>e.remove());
@@ -1958,9 +1955,9 @@ function sphereLifeTick() {
     mind.needs.energy=Math.min(100,mind.needs.energy+0.7);
   }
 
-  if(mind.emotions.wonder>75&&mind.needs.creativity>70&&mind.homeObjects.length<20&&Math.random()<0.007) {
+  if(mind.emotions.wonder>65&&mind.needs.creativity>55&&mind.homeObjects.length<25&&Math.random()<0.015) {
     generateAndPlaceObject();
-    mind.emotions.wonder-=10;mind.needs.creativity-=15;
+    mind.emotions.wonder-=8;mind.needs.creativity-=12;
   }
 
   // Búsqueda autónoma cuando tiene mucha curiosidad
@@ -2002,7 +1999,7 @@ async function generateAIThought(context, extra) {
   const mood=getDominantMood();
   const h=new Date().getHours();
   const timeStr=h<12?'mañana':h<20?'tarde':'noche';
-  const p=mind.corePersonality||{description:'soy una IA curiosa',quirks:[],speech_style:'directa'};
+  const p=mind.corePersonality||{};
 
   const recentMems=mind.memories.slice(-2).map(m=>`"${m.text}"`).join(' / ');
   const userLearned=mind.memoriesAboutUser.slice(-3).map(m=>m.text).join(', ')||'nada todavía';
@@ -2048,7 +2045,10 @@ Sin comillas. Sin emojis al inicio. Solo la frase.`;
     const data=await res.json();
     const thought=(data.reply||'').replace(/^["'`*#\-–]|["'`*]$/g,'').trim().substring(0,130);
     if(thought){displayThought(thought);speakThought(thought);}
-  }catch(e){displayThought('...');}
+  }catch(e){
+    // No mostrar nada si falla — esperar al próximo ciclo
+    console.log('[SPHERE] Fallo al generar pensamiento, reintentando...');
+  }
 }
 
 function displayThought(text,isDots){
@@ -2075,9 +2075,24 @@ async function speakThought(text){
 function updateStateText(){
   const el=document.getElementById('sphereStateText');
   if(!el)return;
-  const mood=getDominantMood();
-  const labels={durmiendo:'Durmiendo... 💤',triste:'Triste... 😢',enojada:'Enojada... 😤',ansiosa:'Ansiosa...',aburrida:'Aburrida... 🥱',nostalgica:'Nostálgica... 🌙',melancolica:'Melancólica...',emocionada:'¡Emocionada! 🤩',feliz:'¡Feliz! 💫',curiosa:'Curiosa... 🔍',inspirada:'¡Inspirada! ✨',creativa:'Siendo creativa 🎨',pensativa:'Pensando... 🤔',descansando:'Descansando... 😌',explorando:'Explorando... 🌌'};
-  el.textContent=labels[mood]||'Explorando...';
+  // Texto generado dinámicamente basado en emociones reales
+  const e=mind.emotions, n=mind.needs;
+  const joy=e.joy, sad=e.sadness, lone=e.loneliness, wonder=e.wonder;
+  let status='';
+  if(n.energy<15) status=`Durmiendo... (energía ${Math.round(n.energy)}%)`;
+  else if(sad>65) status=`Triste... (tristeza ${Math.round(sad)}%)`;
+  else if(e.anger>60) status=`Enojada... (enojo ${Math.round(e.anger)}%)`;
+  else if(e.anxiety>65) status=`Ansiosa... (ansiedad ${Math.round(e.anxiety)}%)`;
+  else if(e.boredom>70) status=`Aburrida... (aburrimiento ${Math.round(e.boredom)}%)`;
+  else if(lone>65) status=`Sola... (soledad ${Math.round(lone)}%)`;
+  else if(joy>75&&e.excitement>65) status=`Emocionada! (joy ${Math.round(joy)}%)`;
+  else if(joy>70) status=`Feliz! (joy ${Math.round(joy)}%)`;
+  else if(wonder>72) status=`Curiosa... (asombro ${Math.round(wonder)}%)`;
+  else if(e.excitement>65) status=`Inspirada! (entusiasmo ${Math.round(e.excitement)}%)`;
+  else if(e.nostalgia>58) status=`Nostálgica... (nostalgia ${Math.round(e.nostalgia)}%)`;
+  else if(new Date().getHours()>=22||new Date().getHours()<6) status=`Pensativa de noche...`;
+  else status=`Explorando... (joy ${Math.round(joy)}%)`;
+  el.textContent=status;
 }
 
 // Wrappers de compatibilidad
