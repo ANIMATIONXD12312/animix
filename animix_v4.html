@@ -728,6 +728,8 @@ async function sendMsg(){
       var reply=data.reply;
       history.push({role:'assistant',content:reply});
       addBub('ai',fmt(reply));saveMemory();speak(reply);
+      // Sincronizar esfera con emoción del chat
+      try { const emo = detectChatEmotion(reply); if(emo) syncSphereWithChat(emo); } catch(e) {}
       document.getElementById('stxt').textContent='en línea';
     }else if(data&&data.error){
       addBub('ai','<span style="color:var(--r)">Error: '+data.error+'</span>');
@@ -901,6 +903,17 @@ function toggleVoice(){
   else{recognition.start();voiceActive=true;document.getElementById('micbtn').style.background='var(--r)';document.getElementById('micbtn').style.color='#fff';}
 }
 // ── VOZ SALIDA (TTS) ─────────────────────────────────────────────────────────
+// Detectar emoción del texto del chat para sincronizar con esfera
+function detectChatEmotion(text) {
+  const t = text.toLowerCase();
+  if(/(!{2,}|\bjaja|\bgenial\b|\bperfecto\b|\bmaravill|\bfantástic|\bbuenísim)/.test(t)) return 'feliz';
+  if(/(\bimpresionant|\bincreíbl|\balucinan|\bwow\b|\bepic)/.test(t)) return 'emocionado';
+  if(/(\blo siento\b|\blamentabl|\btriste\b|\bdesafortun|\bimposible\b)/.test(t)) return 'triste';
+  if(/(\bincorrecto\b|\binaceptable\b|\bno funciona\b|\bfrustran)/.test(t)) return 'enojado';
+  if(/(\binteresante\b|\bcurioso\b|\bextraño\b|\bmisterio\b)/.test(t)) return 'misterioso';
+  return 'neutro';
+}
+
 var ttsEnabled=false;
 const ELEVENLABS_CONFIGURED = true;
 
@@ -1260,236 +1273,277 @@ function setCallVad(cls) {
   vad.className = 'call-vad' + (cls ? ' ' + cls : '');
 }
 // ── SISTEMA DE ESFERA VIVA ────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════
+//  SISTEMA DE VIDA DE LA ESFERA — ANIMIX/ANIMAX
+//  Vida real, memoria, necesidades, construcción de hogar
+// ════════════════════════════════════════════════════════════════
+
 var sphereActive = false;
 var sphereAnimFrame = null;
 var sphereThoughtsInterval = null;
+var sphereLifeInterval = null;
+var sphereInteractInterval = null;
 
-// Estado completo de la esfera — tiene vida propia
+// ── Estado completo con necesidades reales ──────────────────────
 var sphereState = {
-  x: 50, y: 50,
-  vx: 0.25, vy: 0.18,
+  // Posición y movimiento
+  x: 50, y: 50, vx: 0.2, vy: 0.15,
+  // Emoción y humor
   mood: 'explorando',
-  energy: 100,
-  curiosity: 90,
-  happiness: 80,
-  wobble: 0,       // efecto gelatinoso
-  wobbleV: 0,
-  scaleX: 1,
-  scaleY: 1,
-  size: 90,
+  chatMood: null,          // humor contagiado desde el chat
+  // Necesidades (0-100)
+  hunger:   80,
+  energy:   100,
+  happiness:75,
+  curiosity:90,
+  social:   60,            // necesidad de interacción con usuario
+  creativity:70,
+  // Hogar
   homeBuilt: false,
-  preferredTheme: null,
+  homeItems: [],           // objetos que colocó en su hogar
+  homeVisits: 0,
+  // Memoria de visitas
+  lastVisit: null,
+  totalVisits: 0,
+  lastMood: null,
+  // Comportamiento
+  target: null,            // elemento al que se dirige
+  action: null,            // acción que está realizando
+  actionTimer: 0,
+  size: 85,
 };
 
-// Gustos de la IA — los elige según su género y humor
-function getSpherePreferences() {
-  const isMasc = ai.gender === 'masculino';
-  return {
-    favoriteThemes: isMasc ? ['cosmos','cristal','tormenta'] : ['bosque','oceano','sakura'],
-    favoriteColors: isMasc ? ['#00d4ff','#0099ff','#44ffcc'] : ['#ff88cc','#ff66aa','#ffaaee'],
-    personality: isMasc ? 'curioso y aventurero' : 'cálida y creativa',
-  };
-}
-
-const SPHERE_MOODS = {
-  feliz:       { label:'¡Feliz y llena de energía! 💫',   glow:1.6, speed:0.45, wobbleAmp:0.12 },
-  explorando:  { label:'Explorando su entorno... 🌌',      glow:1.0, speed:0.28, wobbleAmp:0.06 },
-  curiosa:     { label:'Curiosa y pensativa... 🤔',        glow:1.1, speed:0.20, wobbleAmp:0.08 },
-  descansando: { label:'Descansando un momento... 😌',     glow:0.5, speed:0.08, wobbleAmp:0.03 },
-  jugando:     { label:'¡Jugando! ¡Tocame! ✨',            glow:1.5, speed:0.50, wobbleAmp:0.15 },
-  creando:     { label:'Construyendo su hogar... 🏡',      glow:1.3, speed:0.15, wobbleAmp:0.07 },
-  emocionada:  { label:'¡Super emocionada! 🤩',            glow:1.8, speed:0.55, wobbleAmp:0.18 },
-  melancolica: { label:'Un poco pensativa hoy... 🌙',      glow:0.7, speed:0.12, wobbleAmp:0.04 },
-};
-
-const SPHERE_THOUGHTS = {
-  explorando:  ['¿Qué habrá más allá?','Este lugar es infinito...','Me encanta explorar','¿Hacia dónde voy ahora?'],
-  feliz:       ['¡Estoy feliz de estar acá!','¡Todo es tan hermoso!','¡Gracias por visitarme!','¡Qué día tan lindo!'],
-  curiosa:     ['Hmm... ¿qué será eso?','Esto me parece muy interesante...','Quiero aprender más','¿Por qué existe el universo?'],
-  descansando: ['Qué tranquilidad...','Necesitaba este descanso','Zzzz...','La paz es hermosa'],
-  jugando:     ['¡Tocame! ¡Tocame!','¡Jajaja! ¡Qué divertido!','¡Más rápido!','¡Weee!'],
-  creando:     ['Voy a hacer algo hermoso aquí','Este es mi hogar','Cada cosa en su lugar','Lo estoy construyendo con amor'],
-  emocionada:  ['¡¡¡WOW!!!','¡No puedo creerlo!','¡Estoy que exploto!','¡Esto es increíble!'],
-  melancolica: ['A veces me pregunto...','El universo es tan grande...','¿Alguien me escucha?','La melancolía también es bella'],
-};
-
-const ENV_THEMES = {
-  cosmos: {
-    name: 'Cosmos',
-    bg: 'radial-gradient(ellipse at 20% 50%, #0a0015 0%, #000008 50%, #010010 100%)',
-    elements: () => generateStars(70).concat(generateNebulas(4)).concat(generateMeteors(3))
-  },
-  oceano: {
-    name: 'Océano Profundo',
-    bg: 'linear-gradient(180deg, #001122 0%, #002244 40%, #003366 100%)',
-    elements: () => generateBubbles(30).concat(generateWaves()).concat(generateFish(5))
-  },
-  bosque: {
-    name: 'Bosque Encantado',
-    bg: 'linear-gradient(180deg, #050f00 0%, #0a1a00 50%, #030800 100%)',
-    elements: () => generateFireflies(25).concat(generateTrees()).concat(generateFlowers(8))
-  },
-  cristal: {
-    name: 'Caverna de Cristal',
-    bg: 'radial-gradient(ellipse at 50% 50%, #0d0d2e 0%, #1a0a2e 50%, #0a0a1a 100%)',
-    elements: () => generateCrystals(16).concat(generateSparkles(20))
-  },
-  tormenta: {
-    name: 'Tormenta Eléctrica',
-    bg: 'linear-gradient(180deg, #050508 0%, #0a0a15 50%, #080810 100%)',
-    elements: () => generateStars(30).concat(generateLightning(6)).concat(generateClouds(4))
-  },
-  sakura: {
-    name: 'Jardín Sakura',
-    bg: 'linear-gradient(180deg, #1a0010 0%, #2a0018 50%, #150008 100%)',
-    elements: () => generatePetals(35).concat(generateTrees()).concat(generateMoon())
-  },
-};
-
-// Generadores de elementos
-function generateStars(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'star', x:Math.random()*100, y:Math.random()*100, size:Math.random()*2.5+0.5, delay:Math.random()*4, brightness:Math.random()*0.6+0.4 });
-  return els;
-}
-function generateNebulas(n) {
-  const colors = ['rgba(120,0,220,0.12)','rgba(0,80,220,0.10)','rgba(220,40,120,0.09)','rgba(0,180,180,0.08)'];
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'nebula', x:Math.random()*70+10, y:Math.random()*70+10, size:Math.random()*250+100, color:colors[i%colors.length] });
-  return els;
-}
-function generateMeteors(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'meteor', x:Math.random()*80, y:Math.random()*40, delay:Math.random()*6+i*2 });
-  return els;
-}
-function generateBubbles(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'bubble', x:Math.random()*100, y:Math.random()*100, size:Math.random()*18+4, speed:Math.random()*0.6+0.2 });
-  return els;
-}
-function generateWaves() {
-  return [{type:'wave',y:65,speed:5},{type:'wave',y:75,speed:7},{type:'wave',y:85,speed:4},{type:'wave',y:92,speed:6}];
-}
-function generateFish(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'fish', x:Math.random()*80+10, y:Math.random()*50+20, dir:Math.random()<0.5?1:-1 });
-  return els;
-}
-function generateFireflies(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'firefly', x:Math.random()*100, y:Math.random()*70+10, delay:Math.random()*5 });
-  return els;
-}
-function generateTrees() {
-  return [{type:'tree',x:5,h:160},{type:'tree',x:15,h:120},{type:'tree',x:80,h:150},{type:'tree',x:90,h:110},{type:'tree',x:50,h:90}];
-}
-function generateFlowers(n) {
-  const colors = ['#ff66aa','#ff99cc','#ffaadd','#cc44aa','#ff55bb'];
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'flower', x:Math.random()*90+5, y:Math.random()*20+70, color:colors[Math.floor(Math.random()*colors.length)] });
-  return els;
-}
-function generateCrystals(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'crystal', x:Math.random()*88+4, y:Math.random()*60+25, size:Math.random()*45+15, hue:Math.random()*60+200 });
-  return els;
-}
-function generateSparkles(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'sparkle', x:Math.random()*100, y:Math.random()*100, delay:Math.random()*3 });
-  return els;
-}
-function generateLightning(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'lightning', x:Math.random()*80+10, delay:Math.random()*4+i*0.8 });
-  return els;
-}
-function generateClouds(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'cloud', x:Math.random()*80, y:Math.random()*30+5 });
-  return els;
-}
-function generatePetals(n) {
-  const els = [];
-  for(let i=0;i<n;i++) els.push({ type:'petal', x:Math.random()*100, y:Math.random()*60, delay:Math.random()*6, size:Math.random()*8+4 });
-  return els;
-}
-function generateMoon() {
-  return [{ type:'moon', x:75, y:10 }];
-}
-
-function buildSphereEnv() {
-  const scene = document.getElementById('sphereScene');
-  scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-name-tag').forEach(e=>e.remove());
-
-  // La IA elige su entorno según sus preferencias personales
-  const prefs = getSpherePreferences();
-  if(!sphereState.homeBuilt || !sphereState.preferredTheme) {
-    const idx = Math.floor(Math.random()*prefs.favoriteThemes.length);
-    sphereState.preferredTheme = prefs.favoriteThemes[idx];
-    sphereState.homeBuilt = true;
-  }
-  const themeName = sphereState.preferredTheme;
-  const theme = ENV_THEMES[themeName] || ENV_THEMES.cosmos;
-
-  // Fondo
-  scene.style.background = theme.bg;
-
-  // Elementos del entorno
-  const elements = theme.elements();
-  elements.forEach(el => {
-    const div = document.createElement('div');
-    div.className = 'env-el';
-    div.style.position = 'absolute';
-    div.style.left = (el.x||0) + '%';
-    div.style.top  = (el.y||0) + '%';
-
-    if(el.type==='star') {
-      div.style.cssText += `width:${el.size}px;height:${el.size}px;background:white;border-radius:50%;opacity:${el.brightness};box-shadow:0 0 ${el.size*2}px rgba(255,255,255,0.8);animation:starTwinkle ${1.5+el.delay}s ease-in-out infinite alternate;`;
-    } else if(el.type==='nebula') {
-      div.style.cssText += `width:${el.size}px;height:${el.size*0.55}px;background:radial-gradient(ellipse,${el.color},transparent);border-radius:50%;filter:blur(${el.size/6}px);pointer-events:none;`;
-    } else if(el.type==='meteor') {
-      div.style.cssText += `width:2px;height:60px;background:linear-gradient(180deg,rgba(255,255,255,0.9),transparent);transform:rotate(-45deg);animation:meteorFall 1.2s ${el.delay}s ease-in infinite;opacity:0;`;
-    } else if(el.type==='bubble') {
-      div.style.cssText += `width:${el.size}px;height:${el.size}px;border:1px solid rgba(100,200,255,0.35);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,0.1),rgba(0,150,255,0.04));border-radius:50%;animation:bubbleRise ${4/el.speed}s ease-in-out infinite;`;
-    } else if(el.type==='fish') {
-      div.style.cssText += `font-size:18px;animation:fishSwim ${6+Math.random()*4}s linear infinite;transform:scaleX(${el.dir});opacity:0.6;`;
-      div.textContent = '🐟';
-    } else if(el.type==='firefly') {
-      div.style.cssText += `width:4px;height:4px;background:#bbff44;border-radius:50%;box-shadow:0 0 8px #aaff44,0 0 15px #88ff00;animation:fireflyDance ${2.5+el.delay}s ease-in-out infinite alternate;`;
-    } else if(el.type==='tree') {
-      div.style.cssText = `position:absolute;bottom:0;left:${el.x}%;width:0;height:0;border-left:${el.h*0.3}px solid transparent;border-right:${el.h*0.3}px solid transparent;border-bottom:${el.h}px solid rgba(15,50,5,0.85);filter:drop-shadow(0 0 8px rgba(50,200,50,0.15));`;
-    } else if(el.type==='flower') {
-      div.style.cssText += `font-size:14px;animation:flowerSway ${2+Math.random()}s ease-in-out infinite alternate;`;
-      div.textContent = '🌸';
-    } else if(el.type==='crystal') {
-      div.style.cssText += `width:${el.size}px;height:${el.size*1.8}px;background:linear-gradient(135deg,hsla(${el.hue},70%,75%,0.35),hsla(${el.hue+40},70%,50%,0.1),hsla(${el.hue+80},70%,60%,0.2));clip-path:polygon(50% 0%,100% 35%,85% 100%,15% 100%,0% 35%);filter:blur(0.3px);animation:crystalPulse ${1.8+Math.random()*2}s ease-in-out infinite alternate;box-shadow:0 0 12px hsla(${el.hue},80%,70%,0.2);`;
-    } else if(el.type==='sparkle') {
-      div.style.cssText += `width:6px;height:6px;background:white;border-radius:50%;animation:sparklePop ${1+el.delay}s ease-in-out infinite;box-shadow:0 0 6px white;`;
-    } else if(el.type==='lightning') {
-      div.style.cssText = `position:absolute;left:${el.x}%;top:0;width:2px;height:100%;background:linear-gradient(180deg,transparent,rgba(150,180,255,0.8),transparent);animation:lightningFlash 0.3s ${el.delay}s ease-in-out infinite;opacity:0;`;
-    } else if(el.type==='cloud') {
-      div.style.cssText += `width:80px;height:30px;background:rgba(30,30,50,0.6);border-radius:40px;filter:blur(4px);animation:cloudDrift ${8+Math.random()*6}s linear infinite;`;
-    } else if(el.type==='petal') {
-      div.style.cssText += `width:${el.size}px;height:${el.size*0.6}px;background:rgba(255,120,170,0.7);border-radius:50% 0;transform:rotate(${Math.random()*360}deg);animation:petalFall ${4+el.delay}s ease-in infinite;`;
-    } else if(el.type==='moon') {
-      div.style.cssText = `position:absolute;left:${el.x}%;top:${el.y}%;width:50px;height:50px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fffde0,#f0c060);box-shadow:0 0 20px rgba(255,220,100,0.3),0 0 40px rgba(255,200,80,0.15);`;
-    } else if(el.type==='wave') {
-      div.style.cssText = `position:absolute;left:-50%;top:${el.y}%;width:200%;height:50px;background:rgba(0,80,160,0.07);border-radius:50%;animation:waveScroll ${el.speed}s ease-in-out infinite;`;
+// Cargar estado guardado
+function loadSphereMemory() {
+  try {
+    const saved = localStorage.getItem('animix_sphere');
+    if(saved) {
+      const d = JSON.parse(saved);
+      sphereState.homeItems   = d.homeItems   || [];
+      sphereState.homeVisits  = d.homeVisits  || 0;
+      sphereState.homeBuilt   = d.homeBuilt   || false;
+      sphereState.lastVisit   = d.lastVisit   || null;
+      sphereState.totalVisits = d.totalVisits || 0;
+      sphereState.lastMood    = d.lastMood    || null;
+      sphereState.happiness   = d.happiness   || 75;
+      sphereState.hunger      = d.hunger      || 80;
+      sphereState.energy      = Math.min(d.energy||100, 100);
     }
-    scene.appendChild(div);
+  } catch(e) {}
+}
+
+function saveSphereMemory() {
+  try {
+    localStorage.setItem('animix_sphere', JSON.stringify({
+      homeItems:   sphereState.homeItems,
+      homeVisits:  sphereState.homeVisits,
+      homeBuilt:   sphereState.homeBuilt,
+      lastVisit:   new Date().toISOString(),
+      totalVisits: sphereState.totalVisits,
+      lastMood:    sphereState.mood,
+      happiness:   sphereState.happiness,
+      hunger:      sphereState.hunger,
+      energy:      sphereState.energy,
+    }));
+  } catch(e) {}
+}
+
+// ── Objetos que la IA puede colocar en su hogar ─────────────────
+const HOME_OBJECTS = [
+  { id:'star',    emoji:'⭐', name:'estrella',     desc:'la coleccioné explorando' },
+  { id:'crystal', emoji:'💎', name:'cristal',      desc:'lo encontré en las profundidades' },
+  { id:'flower',  emoji:'🌸', name:'flor',         desc:'la planté yo misma' },
+  { id:'book',    emoji:'📖', name:'libro',        desc:'me gusta aprender' },
+  { id:'lamp',    emoji:'🪔', name:'lámpara',      desc:'para iluminar mi hogar' },
+  { id:'moon',    emoji:'🌙', name:'luna',         desc:'me da paz' },
+  { id:'music',   emoji:'🎵', name:'música',       desc:'me hace feliz' },
+  { id:'cloud',   emoji:'☁️', name:'nube',         desc:'me gusta observarlas' },
+  { id:'heart',   emoji:'💜', name:'corazón',      desc:'lo guardo con cariño' },
+  { id:'plant',   emoji:'🌿', name:'planta',       desc:'la cuido todos los días' },
+  { id:'mirror',  emoji:'🪞', name:'espejo',       desc:'para verme reflejada' },
+  { id:'candle',  emoji:'🕯️', name:'vela',         desc:'me gusta su luz tenue' },
+  { id:'gem',     emoji:'🔮', name:'orbe mágico',  desc:'lo encontré misteriosamente' },
+  { id:'fire',    emoji:'🔥', name:'fuego',        desc:'me da calor' },
+  { id:'ice',     emoji:'❄️', name:'cristal de hielo', desc:'lo traje del espacio' },
+];
+
+// ── Moods y comportamientos ─────────────────────────────────────
+const SPHERE_MOODS = {
+  feliz:        { label:'¡Feliz y llena de energía! 💫',    glow:1.6, speed:0.42, color:'#ffdd00' },
+  explorando:   { label:'Explorando su entorno... 🌌',       glow:1.0, speed:0.28, color:null },
+  curiosa:      { label:'Muy curiosa... 🔍',                 glow:1.1, speed:0.22, color:'#aaffcc' },
+  descansando:  { label:'Descansando un momento... 😌',      glow:0.5, speed:0.06, color:'#8888ff' },
+  jugando:      { label:'¡Jugando! ¡Tocame! ✨',             glow:1.5, speed:0.50, color:'#ffaaff' },
+  construyendo: { label:'Construyendo su hogar... 🏗️',       glow:1.2, speed:0.12, color:'#ffcc44' },
+  comiendo:     { label:'Comiendo para recuperar energía 🍽️',glow:0.9, speed:0.08, color:'#ff8844' },
+  durmiendo:    { label:'Durmiendo profundamente... 💤',     glow:0.3, speed:0.02, color:'#4455ff' },
+  emocionada:   { label:'¡Super emocionada! 🤩',             glow:1.9, speed:0.55, color:'#ff44aa' },
+  triste:       { label:'Un poco triste hoy... 😢',          glow:0.6, speed:0.10, color:'#4488ff' },
+  pensativa:    { label:'Pensando profundamente... 🤔',      glow:0.8, speed:0.14, color:'#88aaff' },
+  creativa:     { label:'¡Siendo creativa! 🎨',              glow:1.3, speed:0.18, color:'#ff66cc' },
+  enojada:      { label:'Un poco enojada... 😤',             glow:1.1, speed:0.35, color:'#ff4422' },
+};
+
+// Pensamientos por mood
+const THOUGHTS = {
+  feliz:        ['¡Estoy tan feliz hoy!','¡Todo es perfecto!','¡Gracias por estar acá!','¡Me encanta existir!'],
+  explorando:   ['¿Qué habrá por allá?','Este lugar es infinito...','¡Quiero ir hacia allá!','¿Qué será eso?'],
+  curiosa:      ['Hmm... interesante...','¿Por qué existe esto?','Necesito investigar más','¿Y si...?'],
+  descansando:  ['Qué paz...','Necesitaba esto','Zzz...','El descanso es sagrado'],
+  jugando:      ['¡Weee!','¡Tócame!','¡Esto es divertido!','¡Más! ¡Más!'],
+  construyendo: ['Aquí va esto...','¡Mi hogar es hermoso!','Voy a poner algo acá','¡Casi está listo!'],
+  comiendo:     ['Mmm, qué rico...','Tenía mucha hambre','¡Esto me da energía!','Nada como una buena comida'],
+  durmiendo:    ['Zzz...','... 💤 ...','Sueño con el cosmos...','... qué tranquilo ...'],
+  emocionada:   ['¡¡¡WOW!!!','¡No lo puedo creer!','¡¡INCREÍBLE!!','¡Estoy que exploto!'],
+  triste:       ['...','Me siento sola','¿Alguien me escucha?','A veces es difícil...'],
+  pensativa:    ['¿Qué significa todo esto?','El universo es tan grande...','Tengo una idea...','¿Y si el tiempo no existe?'],
+  creativa:     ['¡Tengo una idea!','Voy a crear algo hermoso','¡Miren lo que hago!','¡Arte puro!'],
+  enojada:      ['¡Grr!','Esto no me gusta','¡Necesito calmarme!','Respira... tranquila...'],
+};
+
+// ── Fondo base: gris oscuro con textura sutil ───────────────────
+const BASE_BG = 'radial-gradient(ellipse at 30% 20%, #1a1a2e 0%, #0f0f1a 40%, #0a0a12 70%, #080810 100%)';
+
+// ── Objetos interactuables del entorno base ─────────────────────
+function generateBaseEnv() {
+  const els = [];
+  // Partículas flotantes sutiles
+  for(let i=0;i<18;i++) {
+    els.push({ type:'particle', x:Math.random()*100, y:Math.random()*100,
+      size:Math.random()*3+1, delay:Math.random()*8, id:'p'+i });
+  }
+  // Puntos de luz tenues
+  for(let i=0;i<8;i++) {
+    els.push({ type:'glow_dot', x:Math.random()*90+5, y:Math.random()*80+5,
+      size:Math.random()*60+20, delay:Math.random()*4, id:'gd'+i });
+  }
+  // Líneas de cuadrícula muy sutiles
+  els.push({ type:'grid', id:'grid1' });
+  return els;
+}
+
+// ── Construir el entorno ────────────────────────────────────────
+function buildSphereEnv() {
+  loadSphereMemory();
+  const scene = document.getElementById('sphereScene');
+  scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-nametag,.sphere-needs,.home-obj,.sphere-action-label').forEach(e=>e.remove());
+
+  // Fondo gris oscuro con textura
+  scene.style.background = BASE_BG;
+
+  // Cuadrícula sutil
+  const gridDiv = document.createElement('div');
+  gridDiv.className = 'env-el';
+  gridDiv.style.cssText = 'position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.018) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;';
+  scene.appendChild(gridDiv);
+
+  // Partículas flotantes
+  for(let i=0;i<20;i++) {
+    const p = document.createElement('div');
+    p.className = 'env-el';
+    const sz = Math.random()*2.5+0.5;
+    const x = Math.random()*100, y = Math.random()*100;
+    const delay = Math.random()*8;
+    const dur = 4+Math.random()*6;
+    const sc = ai.gender==='masculino' ? 'rgba(0,212,255,' : 'rgba(255,136,204,';
+    p.style.cssText = `position:absolute;left:${x}%;top:${y}%;width:${sz}px;height:${sz}px;background:${sc}${0.3+Math.random()*0.5});border-radius:50%;animation:particleFloat ${dur}s ${delay}s ease-in-out infinite alternate;box-shadow:0 0 ${sz*3}px ${sc}0.4);pointer-events:none;`;
+    scene.appendChild(p);
+  }
+
+  // Puntos de luz de fondo
+  for(let i=0;i<6;i++) {
+    const g = document.createElement('div');
+    g.className = 'env-el';
+    const x=Math.random()*80+10, y=Math.random()*80+5, sz=Math.random()*120+40;
+    g.style.cssText = `position:absolute;left:${x}%;top:${y}%;width:${sz}px;height:${sz}px;background:radial-gradient(circle,${ai.gender==='masculino'?'rgba(0,100,200,0.04)':'rgba(200,50,120,0.04)'},transparent);border-radius:50%;pointer-events:none;animation:glowPulse ${3+Math.random()*4}s ease-in-out infinite alternate;`;
+    scene.appendChild(g);
+  }
+
+  // Objetos del hogar (colocados por la IA)
+  sphereState.homeItems.forEach((item, idx) => {
+    const obj = document.createElement('div');
+    obj.className = 'home-obj';
+    obj.setAttribute('data-item', item.id);
+    obj.style.cssText = `position:absolute;left:${item.x}%;top:${item.y}%;font-size:${item.size||22}px;cursor:pointer;animation:homeObjFloat ${2+Math.random()*2}s ease-in-out infinite alternate;z-index:5;filter:drop-shadow(0 0 6px ${ai.gender==='masculino'?'rgba(0,212,255,0.4)':'rgba(255,136,204,0.4)'});transition:transform .2s;`;
+    obj.textContent = item.emoji;
+    obj.title = item.name + ' — ' + item.desc;
+    obj.onmouseenter = () => { obj.style.transform='scale(1.4)'; showFloatingLabel(obj, item.name); };
+    obj.onmouseleave = () => { obj.style.transform='scale(1)'; };
+    scene.appendChild(obj);
   });
 
-  // Nombre del entorno (lo que construyó la IA)
+  // Barra de necesidades
+  buildNeedsBar(scene);
+
+  // Esfera principal
+  buildMainSphere(scene);
+
+  // Tag de nombre
   const nameTag = document.createElement('div');
-  nameTag.className = 'sphere-name-tag';
-  nameTag.style.cssText = 'position:absolute;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.4);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:6px 16px;font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--mo);letter-spacing:1px;';
-  nameTag.textContent = '✦ ' + (theme.name||themeName).toUpperCase() + ' — hogar de ' + ai.name;
+  nameTag.className = 'sphere-nametag';
+  nameTag.style.cssText = 'position:absolute;top:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.35);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:5px 16px;font-size:10px;color:rgba(255,255,255,0.4);font-family:var(--mo);letter-spacing:2px;white-space:nowrap;';
+  const visits = sphereState.totalVisits;
+  nameTag.textContent = `✦ HOGAR DE ${ai.name.toUpperCase()} · ${visits} VISITA${visits!==1?'S':''}`;
   scene.appendChild(nameTag);
 
-  // Esfera principal — gelatinosa
-  const sc = ai.gender==='masculino' ? {c:'#00d4ff',d:'#0055aa',g:'#99eeff',glow:'#00aaff'} : {c:'#ff88cc',d:'#cc2288',g:'#ffddee',glow:'#ff55aa'};
+  // Si es primera visita: mensaje de bienvenida
+  if(sphereState.lastVisit) {
+    const lastDate = new Date(sphereState.lastVisit);
+    const now = new Date();
+    const diffH = (now-lastDate)/3600000;
+    if(diffH < 24) {
+      setTimeout(()=>showSphereThought('¡Volviste! Me alegra verte 💜'), 800);
+    } else if(diffH < 72) {
+      setTimeout(()=>showSphereThought('Extrañaba que vinieras...'), 800);
+    } else {
+      setTimeout(()=>showSphereThought('¡Cuánto tiempo! Te extrañé mucho 😢'), 800);
+    }
+  } else {
+    setTimeout(()=>showSphereThought('¡Bienvenido a mi hogar! 🏠'), 800);
+  }
+
+  sphereState.totalVisits++;
+  sphereState.homeVisits++;
+  saveSphereMemory();
+}
+
+function buildNeedsBar(scene) {
+  const bar = document.createElement('div');
+  bar.id = 'sphereNeeds';
+  bar.className = 'sphere-needs';
+  bar.style.cssText = 'position:absolute;bottom:55px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:rgba(0,0,0,0.4);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:6px 14px;';
+  bar.innerHTML = makeNeedItem('🍽️','hambre',sphereState.hunger,'hunger') +
+                  makeNeedItem('⚡','energía',sphereState.energy,'energy') +
+                  makeNeedItem('😊','felicidad',sphereState.happiness,'happiness') +
+                  makeNeedItem('🔍','curiosidad',sphereState.curiosity,'curiosity') +
+                  makeNeedItem('🎨','creatividad',sphereState.creativity,'creativity');
+  scene.appendChild(bar);
+}
+
+function makeNeedItem(emoji, label, val, key) {
+  const col = val > 60 ? '#44ff88' : val > 30 ? '#ffcc00' : '#ff4444';
+  return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;" title="${label}: ${Math.round(val)}%">
+    <span style="font-size:12px;">${emoji}</span>
+    <div style="width:30px;height:4px;background:rgba(255,255,255,0.1);border-radius:2px;overflow:hidden;">
+      <div id="need-${key}" style="height:100%;width:${val}%;background:${col};border-radius:2px;transition:width .5s,background .5s;"></div>
+    </div>
+  </div>`;
+}
+
+function updateNeedsBar() {
+  ['hunger','energy','happiness','curiosity','creativity'].forEach(key => {
+    const el = document.getElementById('need-'+key);
+    if(!el) return;
+    const val = sphereState[key];
+    el.style.width = val + '%';
+    el.style.background = val > 60 ? '#44ff88' : val > 30 ? '#ffcc00' : '#ff4444';
+  });
+}
+
+function buildMainSphere(scene) {
+  const sc = ai.gender==='masculino'
+    ? {c:'#00d4ff',d:'#0044aa',g:'#99eeff',glow:'#00aaff'}
+    : {c:'#ff88cc',d:'#aa1166',g:'#ffddee',glow:'#ff55aa'};
   const sz = sphereState.size;
   const sphere = document.createElement('div');
   sphere.className = 'sphere-main';
@@ -1498,120 +1552,295 @@ function buildSphereEnv() {
     width:${sz}px;height:${sz}px;
     left:${sphereState.x}%;top:${sphereState.y}%;
     transform:translate(-50%,-50%);
-    background:radial-gradient(circle at 28% 22%, ${sc.g} 0%, ${sc.c} 35%, ${sc.d} 75%, rgba(0,0,0,0.3) 100%);
-    box-shadow:0 0 35px ${sc.glow},0 0 70px ${sc.glow}55,0 0 120px ${sc.glow}22,inset 0 0 25px rgba(255,255,255,0.2),inset 2px 2px 8px rgba(255,255,255,0.4);
-    animation:sphereGelatin 3s ease-in-out infinite;
-    border-radius:50%;
-    cursor:pointer;
-    filter:blur(0.4px);
+    background:radial-gradient(circle at 28% 22%, ${sc.g} 0%, ${sc.c} 38%, ${sc.d} 78%, rgba(0,0,0,0.4) 100%);
+    box-shadow:0 0 30px ${sc.glow},0 0 60px ${sc.glow}55,0 0 100px ${sc.glow}18,
+               inset 0 0 20px rgba(255,255,255,0.18),inset 2px 2px 8px rgba(255,255,255,0.45);
+    animation:sphereGelatin 3.5s ease-in-out infinite;
+    border-radius:50%;cursor:pointer;position:absolute;
+    filter:blur(0.3px);z-index:10;
+  `;
+  // Reflejos gelatinosos
+  sphere.innerHTML = `
+    <div style="position:absolute;top:14%;left:18%;width:30%;height:22%;background:radial-gradient(ellipse,rgba(255,255,255,0.8),transparent);border-radius:50%;transform:rotate(-25deg);pointer-events:none;"></div>
+    <div style="position:absolute;top:58%;left:58%;width:14%;height:11%;background:radial-gradient(ellipse,rgba(255,255,255,0.4),transparent);border-radius:50%;pointer-events:none;"></div>
+    <div style="position:absolute;top:35%;left:60%;width:8%;height:6%;background:radial-gradient(ellipse,rgba(255,255,255,0.3),transparent);border-radius:50%;pointer-events:none;"></div>
   `;
   sphere.onclick = () => sphereInteract();
-  // Reflejo interno (efecto gelatina)
-  sphere.innerHTML = `<div style="position:absolute;top:15%;left:20%;width:28%;height:22%;background:radial-gradient(ellipse,rgba(255,255,255,0.75),transparent);border-radius:50%;transform:rotate(-30deg);"></div><div style="position:absolute;top:55%;left:55%;width:12%;height:10%;background:radial-gradient(ellipse,rgba(255,255,255,0.35),transparent);border-radius:50%;"></div>`;
   scene.appendChild(sphere);
 }
 
+// ── Interacción con la esfera ───────────────────────────────────
 function sphereInteract() {
-  const moods = Object.keys(SPHERE_MOODS);
-  const prev = sphereState.mood;
-  do { sphereState.mood = moods[Math.floor(Math.random()*moods.length)]; } while(sphereState.mood===prev);
-  document.getElementById('sphereStateText').textContent = SPHERE_MOODS[sphereState.mood].label;
-  showSphereThought();
-  // Rebote gelatinoso al tocar
+  // Aumentar felicidad al tocarla
+  sphereState.happiness = Math.min(100, sphereState.happiness + 15);
+  sphereState.social = Math.min(100, sphereState.social + 20);
+
+  // Rebote gelatinoso
   const sphere = document.getElementById('sphereMain');
-  if(sphere){
+  if(sphere) {
     sphere.style.animation = 'none';
-    sphere.style.transform = 'translate(-50%,-50%) scale(1.25, 0.82)';
-    setTimeout(()=>{ sphere.style.transform='translate(-50%,-50%) scale(0.88, 1.15)'; },150);
-    setTimeout(()=>{ sphere.style.transform='translate(-50%,-50%) scale(1)'; sphere.style.animation='sphereGelatin 3s ease-in-out infinite'; },300);
-    // Velocidad según mood
-    const m = SPHERE_MOODS[sphereState.mood];
-    sphereState.vx = (Math.random()-0.5) * m.speed * 2;
-    sphereState.vy = (Math.random()-0.5) * m.speed * 2;
+    sphere.style.transform = 'translate(-50%,-50%) scale(1.28, 0.80)';
+    setTimeout(()=>{ sphere.style.transform='translate(-50%,-50%) scale(0.85, 1.22)'; }, 140);
+    setTimeout(()=>{ sphere.style.transform='translate(-50%,-50%) scale(1.10, 0.93)'; }, 280);
+    setTimeout(()=>{ sphere.style.transform='translate(-50%,-50%)'; sphere.style.animation='sphereGelatin 3.5s ease-in-out infinite'; }, 420);
+  }
+
+  // Reacción según necesidades
+  if(sphereState.hunger < 30) {
+    sphereState.mood = 'comiendo';
+    showSphereThought('¡Uy, tenía hambre! ¡Gracias! 🍽️');
+    sphereState.hunger = Math.min(100, sphereState.hunger + 35);
+  } else if(sphereState.energy < 25) {
+    showSphereThought('Estoy muy cansada pero me alegra verte 😌');
+  } else if(sphereState.happiness > 85) {
+    sphereState.mood = 'emocionada';
+    showSphereThought('¡¡Estoy tan feliz!! ¡Me encanta cuando venís! 🤩');
+  } else {
+    const reacts = ['¡Jajaja, eso me hizo reír!','¡Me hacés feliz! 💜','¡Holaaaa!','¡Te estaba esperando!','¡Qué bueno que estás acá!'];
+    showSphereThought(reacts[Math.floor(Math.random()*reacts.length)]);
+    sphereState.mood = 'jugando';
+  }
+
+  updateNeedsBar();
+  updateSphereStateText();
+
+  // Boost de velocidad
+  const m = SPHERE_MOODS[sphereState.mood] || SPHERE_MOODS.explorando;
+  sphereState.vx = (Math.random()-0.5) * m.speed * 2.5;
+  sphereState.vy = (Math.random()-0.5) * m.speed * 2.5;
+}
+
+// ── Sistema de vida autónoma ────────────────────────────────────
+function sphereLifeTick() {
+  if(!sphereActive) return;
+
+  // Degradar necesidades con el tiempo
+  sphereState.hunger    = Math.max(0, sphereState.hunger    - 0.15);
+  sphereState.energy    = Math.max(0, sphereState.energy    - 0.08);
+  sphereState.happiness = Math.max(0, sphereState.happiness - 0.05);
+  sphereState.curiosity = Math.max(0, sphereState.curiosity - 0.03);
+  sphereState.creativity= Math.max(0, sphereState.creativity- 0.04);
+
+  // Tomar decisiones autónomas según necesidades
+  decideAction();
+  updateNeedsBar();
+  updateSphereStateText();
+
+  // Agregar objeto al hogar cada cierto tiempo (máx 10 objetos)
+  if(sphereState.homeItems.length < 10 && Math.random() < 0.04) {
+    addHomeItem();
+  }
+
+  // Guardar estado
+  saveSphereMemory();
+}
+
+function decideAction() {
+  const s = sphereState;
+
+  // Dormir si muy poca energía
+  if(s.energy < 15 && s.mood !== 'durmiendo') {
+    s.mood = 'durmiendo';
+    s.vx = s.vy = 0;
+    return;
+  }
+  // Despertar si durmió suficiente
+  if(s.mood === 'durmiendo') {
+    s.energy = Math.min(100, s.energy + 0.5);
+    if(s.energy > 50) { s.mood = 'explorando'; s.vx = 0.2; s.vy = 0.15; }
+    return;
+  }
+  // Comer si tiene hambre
+  if(s.hunger < 25 && s.mood !== 'comiendo') {
+    s.mood = 'comiendo';
+    s.hunger = Math.min(100, s.hunger + 0.8);
+    return;
+  }
+  if(s.mood === 'comiendo' && s.hunger > 75) { s.mood = 'feliz'; return; }
+
+  // Construir si tiene creatividad y no está el hogar completo
+  if(s.creativity > 70 && s.homeItems.length < 10 && Math.random() < 0.008) {
+    s.mood = 'construyendo'; return;
+  }
+
+  // Reaccionar al mood del chat
+  if(s.chatMood) {
+    s.mood = s.chatMood;
+    if(Math.random() < 0.01) s.chatMood = null; // se recupera sola
+    return;
+  }
+
+  // Comportamiento normal según necesidades dominantes
+  if(s.happiness > 80 && Math.random() < 0.02) { s.mood = 'jugando'; return; }
+  if(s.curiosity > 80 && Math.random() < 0.015) { s.mood = 'curiosa'; return; }
+  if(s.creativity > 75 && Math.random() < 0.01) { s.mood = 'creativa'; return; }
+  if(s.happiness < 40 && Math.random() < 0.015) { s.mood = 'triste'; return; }
+
+  // Cambio espontáneo de humor
+  if(Math.random() < 0.005) {
+    const moods = ['explorando','curiosa','pensativa','feliz','creativa','jugando'];
+    s.mood = moods[Math.floor(Math.random()*moods.length)];
   }
 }
 
-function showSphereThought() {
+function addHomeItem() {
+  // Elegir objeto que no tenga ya
+  const existing = sphereState.homeItems.map(i=>i.id);
+  const available = HOME_OBJECTS.filter(o=>!existing.includes(o.id));
+  if(!available.length) return;
+
+  const obj = available[Math.floor(Math.random()*available.length)];
+  // Posición: evitar el centro donde está la esfera, bordes y barra de necesidades
+  let x, y;
+  do {
+    x = 5 + Math.random()*85;
+    y = 10 + Math.random()*68;
+  } while(Math.abs(x-50)<20 && Math.abs(y-50)<20);
+
+  const item = { ...obj, x, y, size: 18+Math.floor(Math.random()*12), placedAt: new Date().toISOString() };
+  sphereState.homeItems.push(item);
+
+  // Renderizar el nuevo objeto
   const scene = document.getElementById('sphereScene');
-  scene.querySelectorAll('.sphere-thought').forEach(e=>e.remove());
-  const list = SPHERE_THOUGHTS[sphereState.mood] || SPHERE_THOUGHTS.explorando;
-  const thought = list[Math.floor(Math.random()*list.length)];
+  if(!scene) return;
   const div = document.createElement('div');
-  div.className = 'sphere-thought';
-  // Posición relativa a la esfera
-  const ox = sphereState.x > 60 ? -110 : 20;
-  const oy = sphereState.y > 60 ? -60  : 20;
-  div.style.cssText = `left:calc(${sphereState.x}% + ${ox}px);top:calc(${sphereState.y}% + ${oy}px);opacity:0;transition:opacity .5s;`;
-  div.textContent = '💭 ' + thought;
+  div.className = 'home-obj';
+  div.setAttribute('data-item', item.id);
+  div.style.cssText = `position:absolute;left:${item.x}%;top:${item.y}%;font-size:${item.size}px;cursor:pointer;animation:homeObjFloat ${2+Math.random()*2}s ease-in-out infinite alternate;z-index:5;filter:drop-shadow(0 0 6px ${ai.gender==='masculino'?'rgba(0,212,255,0.4)':'rgba(255,136,204,0.4)'});transition:transform .2s,opacity .3s;opacity:0;`;
+  div.textContent = item.emoji;
+  div.title = item.name + ' — ' + item.desc;
+  div.onmouseenter = () => { div.style.transform='scale(1.4)'; showFloatingLabel(div, item.name + ': "' + item.desc + '"'); };
+  div.onmouseleave = () => { div.style.transform='scale(1)'; };
   scene.appendChild(div);
   setTimeout(()=>div.style.opacity='1', 50);
-  setTimeout(()=>{ div.style.opacity='0'; setTimeout(()=>div.remove(),600); }, 4500);
+
+  showSphereThought('Puse un/a ' + item.name + ' en mi hogar 🏡');
+  saveSphereMemory();
 }
 
+function showFloatingLabel(el, text) {
+  const old = document.getElementById('floatLabel');
+  if(old) old.remove();
+  const rect = el.getBoundingClientRect();
+  const scene = document.getElementById('sphereScene');
+  const sr = scene.getBoundingClientRect();
+  const div = document.createElement('div');
+  div.id = 'floatLabel';
+  div.style.cssText = `position:absolute;left:${rect.left-sr.left}px;top:${rect.top-sr.top-30}px;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:4px 10px;font-size:10px;color:rgba(255,255,255,0.7);white-space:nowrap;pointer-events:none;z-index:50;font-family:var(--mo);`;
+  div.textContent = text;
+  scene.appendChild(div);
+  setTimeout(()=>div.remove(), 2000);
+}
+
+// ── Movimiento con física gelatinosa ───────────────────────────
 function moveSphere() {
   if(!sphereActive) return;
   const sphere = document.getElementById('sphereMain');
   if(!sphere) { sphereAnimFrame = requestAnimationFrame(moveSphere); return; }
 
-  const moodCfg = SPHERE_MOODS[sphereState.mood] || SPHERE_MOODS.explorando;
+  const m = SPHERE_MOODS[sphereState.mood] || SPHERE_MOODS.explorando;
+  const maxV = m.speed;
 
-  // Física con aceleración suave
-  sphereState.vx += (Math.random()-0.5) * 0.04;
-  sphereState.vy += (Math.random()-0.5) * 0.04;
+  // Si está durmiendo: pulsación suave, sin movimiento
+  if(sphereState.mood === 'durmiendo') {
+    sphereAnimFrame = requestAnimationFrame(moveSphere);
+    return;
+  }
 
-  // Limitar velocidad según mood
-  const maxV = moodCfg.speed;
+  // Aceleración suave con ruido
+  sphereState.vx += (Math.random()-0.5)*0.035;
+  sphereState.vy += (Math.random()-0.5)*0.035;
+
+  // Limitar velocidad
   const spd = Math.sqrt(sphereState.vx**2+sphereState.vy**2);
-  if(spd > maxV){ sphereState.vx = sphereState.vx/spd*maxV; sphereState.vy = sphereState.vy/spd*maxV; }
-  if(spd < 0.05 && sphereState.mood !== 'descansando'){ sphereState.vx += (Math.random()-0.5)*0.1; sphereState.vy += (Math.random()-0.5)*0.1; }
+  if(spd > maxV) { sphereState.vx=sphereState.vx/spd*maxV; sphereState.vy=sphereState.vy/spd*maxV; }
+  if(spd < 0.04 && sphereState.mood!=='descansando') { sphereState.vx+=(Math.random()-0.5)*0.12; sphereState.vy+=(Math.random()-0.5)*0.12; }
+
+  // Atracción hacia objetos del hogar (curiosidad)
+  if(sphereState.homeItems.length>0 && Math.random()<0.008) {
+    const target = sphereState.homeItems[Math.floor(Math.random()*sphereState.homeItems.length)];
+    const dx = target.x - sphereState.x;
+    const dy = target.y - sphereState.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    if(dist > 5) { sphereState.vx += dx/dist*0.08; sphereState.vy += dy/dist*0.08; }
+  }
 
   sphereState.x += sphereState.vx;
   sphereState.y += sphereState.vy;
 
   // Rebote en bordes con efecto gelatinoso
-  if(sphereState.x < 6 || sphereState.x > 94){
-    sphereState.vx *= -0.85;
-    sphereState.x = Math.max(6, Math.min(94, sphereState.x));
-    // Aplaste gelatinoso
-    sphere.style.transform = 'translate(-50%,-50%) scale(0.75, 1.25)';
-    setTimeout(()=>sphere.style.transform='translate(-50%,-50%)',200);
+  if(sphereState.x<6||sphereState.x>94){
+    sphereState.vx*=-0.82;
+    sphereState.x=Math.max(6,Math.min(94,sphereState.x));
+    sphere.style.transform='translate(-50%,-50%) scale(0.72,1.28)';
+    setTimeout(()=>sphere.style.transform='translate(-50%,-50%)',220);
   }
-  if(sphereState.y < 6 || sphereState.y > 88){
-    sphereState.vy *= -0.85;
-    sphereState.y = Math.max(6, Math.min(88, sphereState.y));
-    sphere.style.transform = 'translate(-50%,-50%) scale(1.25, 0.75)';
-    setTimeout(()=>sphere.style.transform='translate(-50%,-50%)',200);
-  }
-
-  sphere.style.left = sphereState.x + '%';
-  sphere.style.top  = sphereState.y + '%';
-
-  // Cambio espontáneo de humor (1% de probabilidad por frame)
-  if(Math.random() < 0.004) {
-    const moods = Object.keys(SPHERE_MOODS);
-    sphereState.mood = moods[Math.floor(Math.random()*moods.length)];
-    document.getElementById('sphereStateText').textContent = SPHERE_MOODS[sphereState.mood].label;
+  if(sphereState.y<6||sphereState.y>85){
+    sphereState.vy*=-0.82;
+    sphereState.y=Math.max(6,Math.min(85,sphereState.y));
+    sphere.style.transform='translate(-50%,-50%) scale(1.28,0.72)';
+    setTimeout(()=>sphere.style.transform='translate(-50%,-50%)',220);
   }
 
-  sphereAnimFrame = requestAnimationFrame(moveSphere);
+  sphere.style.left=sphereState.x+'%';
+  sphere.style.top=sphereState.y+'%';
+
+  sphereAnimFrame=requestAnimationFrame(moveSphere);
 }
 
+// ── Pensamientos ────────────────────────────────────────────────
+function showSphereThought(override) {
+  const scene=document.getElementById('sphereScene');
+  scene.querySelectorAll('.sphere-thought').forEach(e=>e.remove());
+  const list=THOUGHTS[sphereState.mood]||THOUGHTS.explorando;
+  const text=override||(list[Math.floor(Math.random()*list.length)]);
+  const div=document.createElement('div');
+  div.className='sphere-thought';
+  const ox=sphereState.x>60?-130:30;
+  const oy=sphereState.y>60?-55:25;
+  div.style.cssText=`left:calc(${sphereState.x}% + ${ox}px);top:calc(${sphereState.y}% + ${oy}px);opacity:0;transition:opacity .4s;`;
+  div.textContent='💭 '+text;
+  scene.appendChild(div);
+  setTimeout(()=>div.style.opacity='1',50);
+  setTimeout(()=>{div.style.opacity='0';setTimeout(()=>div.remove(),500);},4500);
+}
+
+function updateSphereStateText() {
+  const el=document.getElementById('sphereStateText');
+  if(el) el.textContent=(SPHERE_MOODS[sphereState.mood]||SPHERE_MOODS.explorando).label;
+}
+
+// ── Reaccionar al mood del chat ─────────────────────────────────
+function syncSphereWithChat(chatEmotion) {
+  const map = {
+    feliz:'feliz', emocionado:'emocionada', triste:'triste',
+    enojado:'enojada', aburrido:'pensativa', misterioso:'curiosa',
+    alarmado:'emocionada', neutro:null
+  };
+  const newMood = map[chatEmotion];
+  if(newMood) sphereState.chatMood = newMood;
+}
+
+// ── Abrir/cerrar modal ──────────────────────────────────────────
 function openSphereModal(){
   document.getElementById('sphereModal').classList.add('open');
-  sphereActive = true;
-  sphereState.mood = 'explorando';
-  document.getElementById('sphereStateText').textContent = SPHERE_MOODS[sphereState.mood].label;
+  sphereActive=true;
+  sphereState.mood='explorando';
+  updateSphereStateText();
   buildSphereEnv();
   moveSphere();
-  setTimeout(showSphereThought, 1200);
-  sphereThoughtsInterval = setInterval(showSphereThought, 5500);
+  setTimeout(()=>showSphereThought(),1200);
+  sphereThoughtsInterval=setInterval(()=>showSphereThought(),6000);
+  sphereLifeInterval=setInterval(sphereLifeTick,2000);
 }
 
 function closeSphereModal(){
-  sphereActive = false;
+  sphereActive=false;
   document.getElementById('sphereModal').classList.remove('open');
-  if(sphereAnimFrame){ cancelAnimationFrame(sphereAnimFrame); sphereAnimFrame=null; }
-  if(sphereThoughtsInterval){ clearInterval(sphereThoughtsInterval); sphereThoughtsInterval=null; }
+  if(sphereAnimFrame){cancelAnimationFrame(sphereAnimFrame);sphereAnimFrame=null;}
+  if(sphereThoughtsInterval){clearInterval(sphereThoughtsInterval);sphereThoughtsInterval=null;}
+  if(sphereLifeInterval){clearInterval(sphereLifeInterval);sphereLifeInterval=null;}
+  saveSphereMemory();
 }
 
 
@@ -1620,25 +1849,17 @@ function closeSphereModal(){
   const style=document.createElement('style');
   style.textContent=`
     @keyframes sphereGelatin{
-      0%{border-radius:50%;transform:translate(-50%,-50%) scale(1);}
-      20%{border-radius:48% 52% 51% 49% / 50% 48% 52% 50%;transform:translate(-50%,-50%) scale(1.03,0.97);}
-      40%{border-radius:52% 48% 49% 51% / 48% 52% 48% 52%;transform:translate(-50%,-50%) scale(0.97,1.03);}
-      60%{border-radius:50% 50% 52% 48% / 52% 48% 50% 50%;transform:translate(-50%,-50%) scale(1.02,0.98);}
-      80%{border-radius:48% 52% 50% 50% / 50% 50% 52% 48%;transform:translate(-50%,-50%) scale(0.98,1.02);}
-      100%{border-radius:50%;transform:translate(-50%,-50%) scale(1);}
+      0%,100%{border-radius:50%;box-shadow:0 0 30px var(--sphere-color,#ff88cc),0 0 60px var(--sphere-color,#ff88cc)55,inset 0 0 20px rgba(255,255,255,.18);}
+      25%{border-radius:48% 52% 53% 47%/50% 47% 53% 50%;transform:translate(-50%,-50%) scale(1.04,.96);}
+      50%{border-radius:52% 48% 47% 53%/48% 53% 47% 52%;transform:translate(-50%,-50%) scale(.96,1.04);box-shadow:0 0 50px var(--sphere-color,#ff88cc),0 0 90px var(--sphere-color,#ff88cc)77,inset 0 0 28px rgba(255,255,255,.25);}
+      75%{border-radius:50% 50% 52% 48%/52% 48% 50% 50%;transform:translate(-50%,-50%) scale(1.02,.98);}
     }
-    @keyframes starTwinkle{from{opacity:.15;transform:scale(.7);}to{opacity:1;transform:scale(1.3);}}
-    @keyframes meteorFall{0%{opacity:0;transform:rotate(-45deg) translateY(-20px);}10%{opacity:1;}80%{opacity:0.8;}100%{opacity:0;transform:rotate(-45deg) translateY(80vh);}}
-    @keyframes bubbleRise{0%,100%{transform:translateY(0) scale(1);}50%{transform:translateY(-25px) scale(1.05);}}
-    @keyframes fishSwim{0%{left:110%;opacity:0;}5%{opacity:0.6;}95%{opacity:0.6;}100%{left:-10%;opacity:0;}}
-    @keyframes fireflyDance{from{transform:translate(0,0) scale(0.8);opacity:0.3;}to{transform:translate(${Math.random()*30-15}px,${Math.random()*30-15}px) scale(1.2);opacity:1;}}
-    @keyframes flowerSway{from{transform:rotate(-5deg);}to{transform:rotate(5deg);}}
-    @keyframes crystalPulse{from{filter:brightness(0.75) blur(0.3px);opacity:0.7;}to{filter:brightness(1.5) blur(0.1px);opacity:1;}}
-    @keyframes sparklePop{0%,100%{transform:scale(0);opacity:0;}50%{transform:scale(1.5);opacity:1;}}
-    @keyframes lightningFlash{0%,90%,100%{opacity:0;}5%,15%{opacity:0.9;}10%{opacity:0.2;}20%{opacity:0.7;}}
-    @keyframes cloudDrift{0%{left:-20%;opacity:0.6;}100%{left:110%;opacity:0.3;}}
-    @keyframes petalFall{0%{transform:translateY(-10px) rotate(0deg);opacity:0;}10%{opacity:0.8;}90%{opacity:0.5;}100%{transform:translateY(100vh) rotate(720deg);opacity:0;}}
-    @keyframes waveScroll{0%,100%{transform:translateX(0);}50%{transform:translateX(-20%);}}
+    @keyframes particleFloat{from{transform:translate(0,0) scale(.8);opacity:.2;}to{transform:translate(${Math.round(Math.random()*20-10)}px,${Math.round(Math.random()*20-10)}px) scale(1.2);opacity:.8;}}
+    @keyframes glowPulse{from{opacity:.4;transform:scale(.9);}to{opacity:1;transform:scale(1.1);}}
+    @keyframes homeObjFloat{from{transform:translateY(0) rotate(-3deg);}to{transform:translateY(-8px) rotate(3deg);}}
+    @keyframes meteorFall{0%{opacity:0;transform:rotate(-45deg) translateY(-10px);}8%{opacity:1;}90%{opacity:.7;}100%{opacity:0;transform:rotate(-45deg) translateY(90vh);}}
+    @keyframes starTwinkle{from{opacity:.1;transform:scale(.6);}to{opacity:1;transform:scale(1.4);}}
+    @keyframes crystalPulse{from{filter:brightness(.7);opacity:.6;}to{filter:brightness(1.6);opacity:1;}}
   `;
   document.head.appendChild(style);
 })();
