@@ -1141,8 +1141,7 @@ function stopAndTranscribe() {
   callMediaRecorder.onstop = async () => {
     const blob = new Blob(callChunks, { type: callMediaRecorder.mimeType });
     callChunks = [];
-    // restart recorder for next phrase
-    setTimeout(() => { if (callActive && !callMuted) startMediaRecorder(); }, 100);
+    // NO reiniciar el grabador aquí — se reinicia después de que la IA termina de hablar
 
     if (blob.size < 3000) return; // demasiado corto, ignorar
     setCallStatus('Procesando...');
@@ -1202,25 +1201,44 @@ async function callAskAI(userText) {
     // También agregar al chat principal
     addBub('u', userText); addBub('ai', fmt(reply)); saveMemory();
 
-    // Reproducir con ElevenLabs (voz según género)
+    // PARAR el grabador mientras la IA habla (evita que grabe su propia voz)
+    if (callMediaRecorder && callMediaRecorder.state !== 'inactive') {
+      try { callMediaRecorder.stop(); } catch(e) {}
+    }
+    callChunks = []; // limpiar chunks acumulados
+    callVADActive = false;
+    callSilenceStart = null;
+    callSpeechStart = null;
+
     if (callCurrentAudio) { callCurrentAudio.pause(); callCurrentAudio = null; }
     setCallVad('speaking-out');
     const audio = await speakElevenLabs(reply);
+
+    const onAIFinished = () => {
+      callCurrentAudio = null;
+      if (!callActive) return;
+      setCallStatus('Escuchando...');
+      setCallOrb('listening');
+      setCallVad('');
+      // Esperar 600ms extra antes de reactivar el grabador
+      // (para que el eco del altavoz no se capture)
+      setTimeout(() => {
+        if (callActive && !callMuted) {
+          callChunks = [];
+          startMediaRecorder();
+        }
+      }, 600);
+    };
+
     if (audio && callActive) {
       callCurrentAudio = audio;
       audio.play();
-      audio.onended = () => {
-        callCurrentAudio = null;
-        if (callActive) { setCallStatus('Escuchando...'); setCallOrb('listening'); setCallVad(''); }
-      };
-    } else {
-      // fallback Web Speech
-      if (window.speechSynthesis && callActive) {
-        const u = new SpeechSynthesisUtterance(reply.replace(/\*\*/g,'').substring(0,300));
-        u.lang = 'es-ES'; u.rate = 1.05;
-        u.onend = () => { if (callActive) { setCallStatus('Escuchando...'); setCallOrb('listening'); setCallVad(''); } };
-        window.speechSynthesis.speak(u);
-      }
+      audio.onended = onAIFinished;
+    } else if (window.speechSynthesis && callActive) {
+      const u = new SpeechSynthesisUtterance(reply.replace(/\*\*/g,'').substring(0,300));
+      u.lang = 'es-ES'; u.rate = 1.05;
+      u.onend = onAIFinished;
+      window.speechSynthesis.speak(u);
     }
   } catch(e) {
     setCallStatus('Error. Escuchando...');
@@ -1248,7 +1266,13 @@ function runVAD() {
       }
     }
 
-    if (callMuted || callCurrentAudio) return; // no VAD si está hablando la IA
+    if (callMuted || callCurrentAudio) {
+      // Resetear VAD completamente mientras IA habla
+      callVADActive = false;
+      callSilenceStart = null;
+      callSpeechStart = null;
+      return;
+    }
 
     if (vol > VAD_THRESHOLD) {
       if (!callSpeechStart) callSpeechStart = Date.now();
