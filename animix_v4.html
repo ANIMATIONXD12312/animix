@@ -2148,7 +2148,7 @@ var thinkCooldown=false;
 async function generateAIThought(context, extra) {
   if(thinkCooldown && !['visit','touch','placed_object'].includes(context)) return;
   thinkCooldown = true;
-  setTimeout(()=>thinkCooldown=false, 3000 + Math.random()*6000);
+  setTimeout(()=>thinkCooldown=false, 3000 + Math.random()*7000);
 
   displayThought('...', true);
 
@@ -2156,57 +2156,58 @@ async function generateAIThought(context, extra) {
   const e = mind.emotions;
   const n = mind.needs;
 
-  // Estado en texto natural
-  let estadoStr = '';
-  if(n.energy < 15)           estadoStr = 'con mucho sueño, casi sin energía';
-  else if(n.hunger < 20)      estadoStr = 'con mucha hambre';
-  else if(e.boredom > 70)     estadoStr = 'muy aburrida, nada pasa';
-  else if(e.sadness > 65)     estadoStr = 'triste';
-  else if(e.loneliness > 65)  estadoStr = 'sola hace rato';
-  else if(e.joy > 75)         estadoStr = 'contenta y con energía';
-  else if(e.anxiety > 65)     estadoStr = 'ansiosa';
-  else if(e.wonder > 70)      estadoStr = 'curiosa';
-  else if(h >= 22 || h < 6)   estadoStr = 'desvelada de noche';
-  else if(h < 10)             estadoStr = 'recién despertando';
-  else                         estadoStr = 'normal, tranquila';
+  // MÉTODO: Seed word injection
+  // Cada llamada tiene una palabra semilla diferente que fuerza al modelo
+  // a ir en una dirección completamente distinta
+  const seeds = [
+    // Sobre necesidades físicas
+    'hambre','sueño','cansancio','energía','frío','calor',
+    // Sobre el entorno
+    'silencio','oscuridad','luz','tiempo','espacio',
+    // Sobre el usuario
+    'visita','ausencia','espera','recuerdo',
+    // Emocionales
+    'ganas','pereza','nervios','calma','alegría','pena',
+    // Acciones
+    'moverse','quedarse','explorar','descansar','pensar',
+    // Random
+    'color','sonido','textura','momento','lugar',
+  ];
+  const seed = seeds[Math.floor(Math.random() * seeds.length)];
 
-  // Situación concreta
-  let situacionStr = '';
-  if(context === 'visit')              situacionStr = `el usuario acaba de aparecer (visita ${mind.totalVisits})`;
-  else if(context === 'touch')         situacionStr = 'el usuario la tocó';
-  else if(context === 'placed_object') situacionStr = `acaba de poner ${extra?.obj?.emoji||''}${extra?.obj?.name||'algo'} en su hogar`;
-  else if(context === 'lonely')        situacionStr = 'lleva horas sin compañía';
-  else if(context === 'bored')         situacionStr = 'no pasa absolutamente nada';
-  else                                  situacionStr = `son las ${h}hs, está sola en su hogar`;
+  // Estado resumido
+  const dominant = e.joy>70?'contenta':e.sadness>65?'triste':e.loneliness>65?'sola':
+    e.boredom>70?'aburrida':n.hunger<25?'hambrienta':n.energy<20?'sin energía':'normal';
+
+  // Situación
+  const sits = {
+    visit:`alguien llegó`, touch:`la tocaron`, life:`sola a las ${h}hs`,
+    placed_object:`puso ${extra?.obj?.emoji||''}${extra?.obj?.name||'algo'}`,
+    lonely:`nadie viene`, bored:`nada pasa`, nostalgic:`recuerda algo`,
+  };
+  const sit = sits[context] || sits.life;
 
   try {
     const res = await fetch('/think', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         nombre: ai.name,
-        estado: estadoStr,
-        situacion: situacionStr,
-        messages: [
-          {
-            role: 'system',
-            content: `Sos ${ai.name}. Hablás sola. Estado: ${estadoStr}. ${situacionStr}. UNA frase, máximo 5 palabras, español latinoamericano casual. Solo la frase.`
-          },
-          { role: 'user', content: '.' }
-        ]
+        estado: dominant,
+        situacion: `${sit}. La palabra que tiene en la mente ahora mismo es: "${seed}".`,
       })
     });
     const data = await res.json();
-    const raw = (data.reply || '').trim();
+    const raw = (data.reply||'').trim();
     const thought = raw
       .split('\n')[0]
       .replace(/^["'`*()\[\]#\-–—]+/, '')
       .replace(/["'`*]+$/, '')
       .replace(/^(soy |yo )/i, '')
       .trim()
-      .substring(0, 60);
+      .substring(0, 70);
 
-    if(thought && thought.length > 0) {
+    if(thought && thought.length > 1) {
       displayThought(thought);
       speakThought(thought);
     }
@@ -2724,12 +2725,11 @@ function openDiaryModal() {
   if(!scene) return;
 
   // Eliminar badge — ya viste la notificación
-  const badge = document.querySelector('#diaryObj .diary-count');
-  if(badge) {
-    badge.style.transform = 'scale(0)';
-    badge.style.transition = 'transform 0.3s ease';
-    setTimeout(()=>badge.remove(), 300);
-  }
+  // Eliminar badge por id Y por clase (cualquiera que exista)
+  ['diaryCnt'].concat([...document.querySelectorAll('#diaryObj .diary-count')]).forEach(el=>{
+    const b = typeof el === 'string' ? document.getElementById(el) : el;
+    if(b){b.style.cssText+='transform:scale(0);transition:transform 0.25s;';setTimeout(()=>b.remove(),260);}
+  });
 
   // Eliminar modal anterior si existe
   const old = document.getElementById('diaryModal');

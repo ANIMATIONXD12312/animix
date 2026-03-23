@@ -792,7 +792,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // /think → Groq directo para pensamientos de la esfera (máxima variedad)
+  // /think → Groq para pensamientos de la esfera
   if (urlObj.pathname === '/think' && req.method === 'POST') {
     let body = '';
     req.on('data', c => body += c);
@@ -800,68 +800,149 @@ const server = http.createServer(async (req, res) => {
       try {
         const d = JSON.parse(body);
         const GROQ_KEY = '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';
+        const models = ['llama-3.1-8b-instant','gemma2-9b-it','llama3-8b-8192'];
+        const model = models[Math.floor(Math.random()*models.length)];
+        const seed  = Math.floor(Math.random()*999999);
+        const nombre = d.nombre || 'ANIMIX';
+        const estado = d.estado || 'normal';
+        const situacion = d.situacion || 'sola';
 
-        // Elegir modelo al azar para máxima variedad
-        const models = [
-          'llama-3.1-8b-instant',      // rápido, casual
-          'gemma2-9b-it',              // diferente estilo
-          'llama3-8b-8192',            // otro estilo
-        ];
-        const model = models[Math.floor(Math.random() * models.length)];
-
-        // Seed aleatoria para forzar variedad
-        const seed = Math.floor(Math.random() * 999999);
+        // La semilla fuerza al modelo a un tema distinto cada llamada
+        const sysContent = 'Sos ' + nombre + '. Estado: ' + estado + '. ' + situacion + '. '
+          + 'Respondé con UNA frase corta (2-6 palabras) relacionada con lo que sentís. '
+          + 'Español latinoamericano casual. Sin signos raros. Solo la frase, nada más.';
 
         const groqBody = JSON.stringify({
           model,
-          messages: d.messages || [],
-          max_tokens: 25,
-          temperature: 1.4,        // máxima variedad posible
-          top_p: 0.95,
-          frequency_penalty: 1.5,  // penaliza repetición fuertemente
-          presence_penalty: 1.0,
+          messages: [
+            { role: 'system', content: sysContent },
+            { role: 'user',   content: '.' }
+          ],
+          max_tokens: 20,
+          temperature: 1.3,
+          top_p: 0.9,
+          frequency_penalty: 1.8,
+          presence_penalty: 1.2,
           seed,
         });
 
-        const opts = {
+        const optsT = {
           hostname: 'api.groq.com',
           path: '/openai/v1/chat/completions',
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${GROQ_KEY}`,
+            'Authorization': 'Bearer ' + GROQ_KEY,
             'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(groqBody),
           },
           timeout: 8000,
         };
-
-        const req2 = https.request(opts, (pRes) => {
+        const req2 = https.request(optsT, (pRes) => {
           const chunks = [];
           pRes.on('data', c => chunks.push(c));
           pRes.on('end', () => {
             try {
               const data = JSON.parse(Buffer.concat(chunks).toString());
-              const reply = data?.choices?.[0]?.message?.content || '';
-              res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-              res.end(JSON.stringify({ reply, model }));
-            } catch(e) {
-              res.writeHead(500); res.end('{}');
-            }
+              const reply = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content ? data.choices[0].message.content : '';
+              res.writeHead(200, {'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});
+              res.end(JSON.stringify({reply, model}));
+            } catch(e2) { res.writeHead(500); res.end('{}'); }
           });
         });
         req2.on('error', () => { res.writeHead(500); res.end('{}'); });
         req2.on('timeout', () => { req2.destroy(); res.writeHead(504); res.end('{}'); });
         req2.write(groqBody);
         req2.end();
+      } catch(e) { res.writeHead(400); res.end('{}'); }
+    });
+    return;
+  }
+
+  // /timeskip → calcula cuánto tiempo pasó desde la última vez y devuelve el estado
+  if (urlObj.pathname === '/timeskip' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const d = JSON.parse(body);
+        const lastSeen = d.lastSeen ? new Date(d.lastSeen) : null;
+        const now = new Date();
+        const secondsPassed = lastSeen ? Math.floor((now - lastSeen) / 1000) : 0;
+        const hoursPassed = secondsPassed / 3600;
+        const daysPassed = secondsPassed / 86400;
+
+        // Simular lo que pasó mientras estaba apagado
+        const state = d.state || {};
+        const emotions = state.emotions || {};
+        const needs = state.needs || {};
+
+        // Degradar según tiempo real transcurrido
+        const hungerDelta   = Math.min(hoursPassed * 8, 60);
+        const energyDelta   = hoursPassed >= 8 ? -20 : -(hoursPassed * 3); // duerme de noche
+        const socialDelta   = -(hoursPassed * 5);
+        const boredDelta    = Math.min(hoursPassed * 4, 50);
+
+        // Era de noche? Recuperar energía durmiendo
+        const lastHour = lastSeen ? lastSeen.getHours() : 12;
+        const wasNight = lastHour >= 22 || lastHour < 6;
+        const energyRecovery = wasNight ? Math.min(hoursPassed * 10, 60) : 0;
+
+        // Nuevo estado calculado
+        const newNeeds = {
+          hunger:     Math.max(0, Math.min(100, (needs.hunger||80)    - hungerDelta)),
+          energy:     Math.max(0, Math.min(100, (needs.energy||100)   + energyDelta + energyRecovery)),
+          social:     Math.max(0, Math.min(100, (needs.social||65)    + socialDelta)),
+          creativity: Math.max(0, Math.min(100, (needs.creativity||70))),
+          meaning:    Math.max(0, Math.min(100, (needs.meaning||60))),
+          stimulation:Math.max(0, Math.min(100, (needs.stimulation||75))),
+        };
+        const newEmotions = {
+          ...emotions,
+          joy:        Math.max(0, Math.min(100, (emotions.joy||60)       - (hoursPassed*0.5))),
+          loneliness: Math.max(0, Math.min(100, (emotions.loneliness||25)+ (hoursPassed*3))),
+          boredom:    Math.max(0, Math.min(100, (emotions.boredom||10)   + boredDelta)),
+          sadness:    Math.max(0, Math.min(100, (emotions.sadness||10)   + (hoursPassed*0.8))),
+        };
+
+        // Eventos que ocurrieron mientras estaba apagado
+        const events = [];
+        if(hoursPassed > 0.5)  events.push(`Estuvo ${Math.round(hoursPassed)} hora(s) sola`);
+        if(daysPassed >= 1)    events.push(`Pasaron ${Math.floor(daysPassed)} día(s) sin el usuario`);
+        if(wasNight)           events.push('Durmió durante la noche');
+        if(newNeeds.hunger < 30) events.push('Se quedó con hambre');
+        if(newEmotions.loneliness > 70) events.push('Se sintió muy sola');
+
+        // Generar descripción de lo que vivió
+        const GROQ_KEY = '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';
+        const name = d.name || 'ANIMIX';
+
+        let wakeUpMsg = '';
+        if(daysPassed >= 7)       wakeUpMsg = `${name} te extrañó toda una semana`;
+        else if(daysPassed >= 1)  wakeUpMsg = `${name} pasó ${Math.floor(daysPassed)} día(s) sola`;
+        else if(hoursPassed >= 4) wakeUpMsg = `${name} esperó ${Math.round(hoursPassed)} horas`;
+        else if(hoursPassed >= 1) wakeUpMsg = `${name} estuvo ${Math.round(hoursPassed)} hora(s) sola`;
+        else if(secondsPassed > 60) wakeUpMsg = `${name} notó que te fuiste un momento`;
+        else wakeUpMsg = '';
+
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({
+          secondsPassed,
+          hoursPassed: +hoursPassed.toFixed(2),
+          daysPassed: +daysPassed.toFixed(2),
+          newNeeds,
+          newEmotions,
+          events,
+          wakeUpMsg,
+        }));
       } catch(e) {
-        res.writeHead(400); res.end('{}');
+        res.writeHead(400); res.end(JSON.stringify({ error: e.message }));
       }
     });
     return;
   }
 
   // /gemini → proxy Groq
-  if (urlObj.pathname === '/gemini' && req.method === 'POST') {
+    if (urlObj.pathname === '/gemini' && req.method === 'POST') {
     let body = '';
     req.on('data', c => body += c);
     req.on('end', async () => {
