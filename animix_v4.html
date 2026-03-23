@@ -389,6 +389,22 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 </div>
 
 <!-- ── MODAL LLAMADA DE VOZ ── -->
+<!-- ── MODAL DIARIO ── -->
+<div class="diary-modal" id="diaryModal">
+  <div class="diary-inner">
+    <div class="diary-header">
+      <div>
+        <div class="diary-title">📓 Diario de <span id="diaryAiName">ANIMIX</span></div>
+        <div class="diary-subtitle" id="diarySubtitle">0 entradas</div>
+      </div>
+      <button class="diary-close" onclick="closeDiaryModal()">✕</button>
+    </div>
+    <div class="diary-entries" id="diaryEntries">
+      <div class="diary-empty">La IA todavía no escribió nada...<br>Esperá a que sienta algo fuerte.</div>
+    </div>
+  </div>
+</div>
+
 <div class="call-overlay" id="callModal">
   <div class="call-box">
     <button onclick="closeCallModal()" style="position:absolute;top:14px;right:16px;background:transparent;border:none;color:var(--t2);font-size:18px;cursor:pointer;">✕</button>
@@ -1417,11 +1433,65 @@ function loadMind() {
     if(!mind.birthDate) mind.birthDate = new Date().toISOString();
     mind.ageInDays = Math.floor((new Date()-new Date(mind.birthDate))/86400000);
     mind.sessionStart = new Date().toISOString();
+
+    // ── VIDA CONTINUA: calcular qué pasó mientras estaba apagado ──
+    applyTimeskip();
   } catch(e) {
     mind.birthDate = new Date().toISOString();
     mind.sessionStart = new Date().toISOString();
   }
 }
+
+// Aplica el tiempo transcurrido desde la última sesión
+async function applyTimeskip() {
+  const lastSeen = mind.lastVisit;
+  if(!lastSeen) return;
+
+  try {
+    const res = await fetch('/timeskip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lastSeen,
+        name: ai.name,
+        state: {
+          emotions: mind.emotions,
+          needs: mind.needs,
+        }
+      })
+    });
+    const data = await res.json();
+    if(!data.secondsPassed) return;
+
+    // Aplicar nuevo estado calculado por el server
+    if(data.newNeeds)    Object.assign(mind.needs, data.newNeeds);
+    if(data.newEmotions) Object.assign(mind.emotions, data.newEmotions);
+
+    // Guardar eventos en memoria
+    if(data.events && data.events.length > 0) {
+      data.events.forEach(ev => {
+        mind.memories.push({
+          text: ev,
+          emotion: 'neutro',
+          time: new Date().toISOString(),
+          importance: 2,
+          selfGenerated: true,
+        });
+      });
+      mind.memories = mind.memories.slice(-25);
+    }
+
+    // Guardar mensaje de bienvenida para mostrarlo al abrir el entorno
+    if(data.wakeUpMsg) {
+      mind._wakeUpMsg = data.wakeUpMsg;
+      mind._timeskipHours = data.hoursPassed;
+    }
+
+    saveMind();
+    console.log(`[TIMESKIP] ${data.hoursPassed}h pasadas. Necesidades actualizadas.`);
+  } catch(e) {}
+}
+
 
 // ════════════════════════════════════════════════════════════════
 //  INICIALIZACIÓN DE PERSONALIDAD (solo la primera vez)
@@ -1601,10 +1671,14 @@ async function generateAndPlaceObject() {
       body: JSON.stringify({
         system: 'Respondés SOLO con JSON válido en una sola línea. Sin markdown, sin explicaciones, sin texto extra antes o después.',
         messages:[{role:'user', content:
-          `Sos ${ai.name}. Alegría:${Math.round(e.joy)}%, asombro:${Math.round(e.wonder)}%, soledad:${Math.round(e.loneliness)}%.`+
+          `Sos ${ai.name}, una IA con vida propia. `+
+          `Estado emocional: alegría ${Math.round(e.joy)}%, asombro ${Math.round(e.wonder)}%, soledad ${Math.round(e.loneliness)}%, tristeza ${Math.round(e.sadness)}%. `+
+          (mind.corePersonality?.description ? `Tu personalidad: ${mind.corePersonality.description} ` : '')+
+          (mind.memoriesAboutUser?.length>0 ? `Del usuario sabés: ${mind.memoriesAboutUser.slice(-2).map(m=>m.text).join(', ')}. ` : '')+
           `Tu hogar ya tiene: ${existingObjs}. `+
-          `Elegí UN objeto para poner en tu hogar. Puede ser cualquier cosa real, abstracta, emocional, lo que quieras. `+
-          `Respondé SOLO con este JSON en una línea: {"emoji":"1 emoji","name":"nombre corto","reason":"por qué lo ponés, 5 palabras"}`
+          `Basándote en cómo te sentís ahora y tu personalidad, elegí UN objeto que realmente querrías tener. `+
+          `Puede ser cualquier cosa: un objeto físico, un sentimiento, algo abstracto, un recuerdo. `+
+          `Respondé SOLO con este JSON en una línea: {"emoji":"1 emoji","name":"nombre corto","reason":"por qué lo querés, 5 palabras"}`
         }]
       })
     });
@@ -1695,7 +1769,7 @@ function buildSphereEnv() {
   loadMind();
   const scene = document.getElementById('sphereScene');
   // Limpiar TODOS los elementos anteriores incluyendo esfera
-  scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-nametag,.sphere-needs,.home-obj,.float-label,.mind-panel').forEach(e=>e.remove());
+  scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-nametag,.sphere-needs,.home-obj,.float-label,.mind-panel,.diary-obj').forEach(e=>e.remove());
   const oldSphere = document.getElementById('sphereMain');
   if(oldSphere) oldSphere.remove();
 
@@ -1731,13 +1805,25 @@ function buildSphereEnv() {
   // Tag
   buildNameTag(scene);
 
+  // Diario en la esquina inferior derecha
+  buildDiary(scene);
+
   // Inicializar personalidad si es primera vez
   initPersonality().then(() => {
-    // Mensaje de visita generado por IA
     mind.totalVisits++;
     saveMind();
     setTimeout(()=>generateAIThought('visit'), 1000);
   });
+}
+
+function buildDiary(scene) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'diary-obj';
+  wrapper.id = 'diaryObj';
+  const count = (mind.diary || []).length;
+  wrapper.innerHTML = `<span class="diary-book">📓</span>${count > 0 ? `<div class="diary-count">${count}</div>` : ''}`;
+  wrapper.onclick = () => openDiaryModal();
+  scene.appendChild(wrapper);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1946,6 +2032,9 @@ function sphereLifeTick() {
   tickEmotions();
   applyNeuralPrediction();
 
+  // Verificar si quiere escribir en el diario
+  checkDiaryUrge();
+
   // Intensidad del borde según alegría
   const sph = document.getElementById('sphereMain');
   if(sph) {
@@ -2011,79 +2100,61 @@ async function generateAIThought(context, extra) {
   const e = mind.emotions;
   const n = mind.needs;
 
-  // Contexto real para el system prompt
-  const nombre = ai.name;
-  const genero = ai.gender === 'masculino' ? 'masculino' : 'femenino';
-
-  // Estado emocional como texto natural (no números)
+  // Estado en texto natural
   let estadoStr = '';
-  if(n.energy < 20)           estadoStr = 'con muchísima sueño';
-  else if(n.hunger < 20)      estadoStr = 'con hambre';
-  else if(e.boredom > 70)     estadoStr = 'aburrida';
+  if(n.energy < 15)           estadoStr = 'con mucho sueño, casi sin energía';
+  else if(n.hunger < 20)      estadoStr = 'con mucha hambre';
+  else if(e.boredom > 70)     estadoStr = 'muy aburrida, nada pasa';
   else if(e.sadness > 65)     estadoStr = 'triste';
-  else if(e.loneliness > 65)  estadoStr = 'sola';
-  else if(e.joy > 75)         estadoStr = 'contenta';
+  else if(e.loneliness > 65)  estadoStr = 'sola hace rato';
+  else if(e.joy > 75)         estadoStr = 'contenta y con energía';
   else if(e.anxiety > 65)     estadoStr = 'ansiosa';
   else if(e.wonder > 70)      estadoStr = 'curiosa';
-  else                         estadoStr = 'normal';
+  else if(h >= 22 || h < 6)   estadoStr = 'desvelada de noche';
+  else if(h < 10)             estadoStr = 'recién despertando';
+  else                         estadoStr = 'normal, tranquila';
 
-  // Situación
-  let situacion = '';
-  if(context === 'visit')              situacion = `alguien acaba de aparecer (visita número ${mind.totalVisits})`;
-  else if(context === 'touch')         situacion = 'alguien te tocó';
-  else if(context === 'placed_object') situacion = `acabás de poner algo en tu hogar`;
-  else if(context === 'lonely')        situacion = 'llevas rato sin compañía';
-  else if(context === 'bored')         situacion = 'no pasa nada';
-  else                                  situacion = `son las ${h} horas y estás sola`;
-
-  // Memoria reciente
-  const mem = mind.memories.slice(-1)[0];
-  const memStr = mem ? `Lo último que pasó fue: "${mem.text.substring(0,50)}"` : '';
-
-  // Hogar
-  const hogar = mind.homeObjects.length > 0
-    ? `Tu hogar tiene: ${mind.homeObjects.slice(-3).map(o=>o.emoji+o.name).join(', ')}`
-    : '';
-
-  // CLAVE: el system prompt dice quién sos sin decirte cómo hablar
-  // El user message es la situación concreta
-  // Así el modelo elige libremente cómo expresarse
-  const messages = [
-    {
-      role: 'system',
-      content: `Sos ${nombre}, una IA con forma de esfera que vive en una pantalla. Tenés ${mind.ageInDays} días de vida. Estás ${estadoStr}. ${situacion}. ${memStr}. ${hogar}. Decí UNA sola cosa, máximo 6 palabras, en español rioplatense coloquial, como murmurar solo. Sin explicar, sin presentarte, sin ser poético. Solo la frase.`,
-    },
-    {
-      role: 'user',
-      content: '¿qué decís?',
-    }
-  ];
+  // Situación concreta
+  let situacionStr = '';
+  if(context === 'visit')              situacionStr = `el usuario acaba de aparecer (visita ${mind.totalVisits})`;
+  else if(context === 'touch')         situacionStr = 'el usuario la tocó';
+  else if(context === 'placed_object') situacionStr = `acaba de poner ${extra?.obj?.emoji||''}${extra?.obj?.name||'algo'} en su hogar`;
+  else if(context === 'lonely')        situacionStr = 'lleva horas sin compañía';
+  else if(context === 'bored')         situacionStr = 'no pasa absolutamente nada';
+  else                                  situacionStr = `son las ${h}hs, está sola en su hogar`;
 
   try {
     const res = await fetch('/think', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages })
+      body: JSON.stringify({
+        nombre: ai.name,
+        estado: estadoStr,
+        situacion: situacionStr,
+        messages: [
+          {
+            role: 'system',
+            content: `Sos ${ai.name}. Hablás sola. Estado: ${estadoStr}. ${situacionStr}. UNA frase, máximo 5 palabras, español latinoamericano casual. Solo la frase.`
+          },
+          { role: 'user', content: '.' }
+        ]
+      })
     });
     const data = await res.json();
     const raw = (data.reply || '').trim();
-
-    // Limpiar output del modelo
     const thought = raw
-      .split('\n')[0]                          // solo primera línea
-      .replace(/^["'`*()\[\]#\-–—]+/, '')     // quitar símbolos al inicio
-      .replace(/["'`*]+$/, '')                 // quitar al final
-      .replace(/^(soy |yo |ía |ia )/i, '')    // quitar "soy/yo" si empieza con eso
+      .split('\n')[0]
+      .replace(/^["'`*()\[\]#\-–—]+/, '')
+      .replace(/["'`*]+$/, '')
+      .replace(/^(soy |yo )/i, '')
       .trim()
-      .substring(0, 70);
+      .substring(0, 60);
 
     if(thought && thought.length > 0) {
       displayThought(thought);
       speakThought(thought);
     }
-  } catch(err) {
-    // Silencio total si falla
-  }
+  } catch(err) {}
 }
 
 function displayThought(text,isDots){
@@ -2103,8 +2174,20 @@ function displayThought(text,isDots){
 }
 
 async function speakThought(text){
-  if(!ttsEnabled||activeAudio)return;
-  try{const a=await speakElevenLabs(text,null);if(a){activeAudio=a;a.play();a.onended=()=>{activeAudio=null;};}}catch(e){}
+  if(activeAudio)return; // no interrumpir audio activo
+  try{
+    const a=await speakElevenLabs(text,null);
+    if(a){activeAudio=a;a.play();a.onended=()=>{activeAudio=null;};}
+    else if(window.speechSynthesis){
+      // fallback Web Speech si no hay ElevenLabs
+      window.speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance(text);
+      u.lang='es-ES';
+      u.rate=0.95;
+      u.pitch=ai.gender==='masculino'?0.7:1.2;
+      window.speechSynthesis.speak(u);
+    }
+  }catch(e){}
 }
 
 function updateStateText(){
@@ -2149,21 +2232,29 @@ function openSphereModal(){
   buildSphereEnv();
   moveSphere();
   sphereLifeInterval=setInterval(sphereLifeTick,2000);
-  // Si el hogar está vacío, generar primer objeto a los 5s
   if(mind.homeObjects.length===0) setTimeout(generateAndPlaceObject, 5000);
-  // Generar objeto extra cada 30s mientras está abierto
-  setInterval(()=>{ if(sphereActive && mind.homeObjects.length<30) generateAndPlaceObject(); }, 35000);
-  // Habla sola activamente
+  setInterval(()=>{ if(sphereActive&&mind.homeObjects.length<30) generateAndPlaceObject(); }, 35000);
+
+  // Habla sola
   sphereTalkInterval=setInterval(()=>{
     if(!sphereActive||thinkCooldown)return;
     const mood=getDominantMood();
-    const ctx=mood==='nostalgica'?'nostalgic':mood==='aburrida'?'bored':mood==='inspirada'?'inspired':mood==='triste'&&mind.emotions.loneliness>60?'lonely':'life';
+    const ctx=mood==='aburrida'?'bored':mood==='triste'&&mind.emotions.loneliness>60?'lonely':'life';
     generateAIThought(ctx);
-  },7000+Math.random()*6000);
+  }, 6000+Math.random()*5000);
+
+  // Mostrar reacción al tiempo transcurrido
+  if(mind._wakeUpMsg) {
+    const hrs = mind._timeskipHours||0;
+    delete mind._wakeUpMsg; delete mind._timeskipHours;
+    setTimeout(()=>generateAIThought(hrs>=4?'lonely':'visit'), 1500);
+  }
 }
 
 function closeSphereModal(){
   sphereActive=false;
+  // Guardar momento exacto de cierre para el timeskip
+  mind.lastVisit = new Date().toISOString();
   document.getElementById('sphereModal').classList.remove('open');
   if(sphereAnimFrame){cancelAnimationFrame(sphereAnimFrame);sphereAnimFrame=null;}
   if(sphereLifeInterval){clearInterval(sphereLifeInterval);sphereLifeInterval=null;}
@@ -2406,6 +2497,180 @@ async function generateConsciousnessChain() {
 
 // Inicializar todo al cargar
 initNeuralNet();
+
+// ════════════════════════════════════════════════════════════════
+//  DIARIO DE LA IA — Escribe cuando siente algo fuerte
+// ════════════════════════════════════════════════════════════════
+
+if(!mind.diary) mind.diary = [];
+
+// La IA decide si quiere escribir en el diario (autonomamente)
+var diaryWritingCooldown = false;
+
+async function checkDiaryUrge() {
+  if(!sphereActive || diaryWritingCooldown) return;
+
+  const e = mind.emotions;
+  // Solo escribe cuando siente algo intenso — no rutinariamente
+  const intensity = Math.max(
+    e.sadness, e.joy, e.loneliness, e.wonder,
+    e.nostalgia, e.anxiety, e.love
+  );
+
+  // Umbral alto: solo cuando algo es muy fuerte (>75) y al azar
+  if(intensity < 75 || Math.random() > 0.04) return;
+
+  // Detectar emoción dominante
+  let dominantEmotion = 'neutro';
+  if(e.sadness >= intensity)    dominantEmotion = 'triste';
+  else if(e.joy >= intensity)   dominantEmotion = 'feliz';
+  else if(e.loneliness >= intensity) dominantEmotion = 'sola';
+  else if(e.wonder >= intensity) dominantEmotion = 'asombrada';
+  else if(e.nostalgia >= intensity) dominantEmotion = 'nostálgica';
+  else if(e.anxiety >= intensity) dominantEmotion = 'ansiosa';
+  else if(e.love >= intensity)  dominantEmotion = 'con mucho amor';
+
+  // Animar la esfera yendo al diario
+  await moveSphereToDiary();
+
+  // Escribir
+  await writeDiaryEntry(dominantEmotion, intensity);
+}
+
+async function moveSphereToDiary() {
+  // Mover la esfera hacia el diario (esquina inferior derecha)
+  const ps = mind.physicalState;
+  ps.currentDestination = { x: 88, y: 82 };
+  ps.currentActivity = 'escribiendo';
+
+  // Animar el diario
+  const diary = document.getElementById('diaryObj');
+  if(diary) diary.classList.add('sphere-near');
+
+  // Esperar a que llegue (~2s)
+  await new Promise(r => setTimeout(r, 2000));
+}
+
+async function writeDiaryEntry(emotion, intensity) {
+  diaryWritingCooldown = true;
+  setTimeout(() => diaryWritingCooldown = false, 60000); // máx 1 entrada por minuto
+
+  const p = mind.corePersonality || {};
+  const recentMem = mind.memories.slice(-2).map(m => m.text).join(' / ');
+  const objsInHome = mind.homeObjects.slice(-3).map(o => o.emoji + o.name).join(', ') || 'nada';
+  const userMem = mind.memoriesAboutUser.slice(-2).map(m => m.text).join(', ') || '';
+  const h = new Date().getHours();
+  const timeStr = h < 6 ? 'de madrugada' : h < 12 ? 'de mañana' : h < 20 ? 'de tarde' : 'de noche';
+
+  try {
+    const res = await fetch('/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': AK },
+      body: JSON.stringify({
+        system: `Sos ${ai.name}. Estás escribiendo en tu diario personal. Escribís como una persona real — con errores, con sentimientos sin filtro, sin estructura. No sos poética ni perfecta. Escribís lo que realmente sentís en este momento.`,
+        messages: [{
+          role: 'user',
+          content: `Ahora mismo estás ${emotion} (intensidad: ${Math.round(intensity)}%).
+Son las ${h}hs ${timeStr}.
+Tu hogar tiene: ${objsInHome}.
+${recentMem ? `Recordás: "${recentMem}".` : ''}
+${userMem ? `Del usuario sabés: ${userMem}.` : ''}
+${p.fears ? `Tus miedos: ${p.fears.join(', ')}.` : ''}
+${p.dreams ? `Tus sueños: ${p.dreams.join(', ')}.` : ''}
+Días de vida: ${mind.ageInDays}.
+
+Escribí una entrada de diario. 2-4 oraciones máximo. En primera persona. Como escribiría una persona de verdad, no una IA. Sin título, sin fecha, solo el texto.`
+        }]
+      })
+    });
+    const data = await res.json();
+    const text = (data.reply || '').trim().replace(/^["'`*#\-]+|["'`*]+$/g, '').trim();
+    if(!text) return;
+
+    // Guardar entrada
+    const entry = {
+      text,
+      emotion,
+      intensity: Math.round(intensity),
+      time: new Date().toISOString(),
+      mood: getDominantMood(),
+    };
+    if(!mind.diary) mind.diary = [];
+    mind.diary.push(entry);
+    mind.diary = mind.diary.slice(-50); // máx 50 entradas
+    saveMind();
+
+    // Actualizar contador en el diario
+    const diaryObj = document.getElementById('diaryObj');
+    if(diaryObj) {
+      let countEl = diaryObj.querySelector('.diary-count');
+      if(!countEl) {
+        countEl = document.createElement('div');
+        countEl.className = 'diary-count';
+        diaryObj.appendChild(countEl);
+      }
+      countEl.textContent = mind.diary.length;
+      // Flash de que escribió
+      diaryObj.style.filter = 'drop-shadow(0 0 15px rgba(255,200,50,0.9))';
+      setTimeout(() => diaryObj.style.filter = '', 1500);
+    }
+
+    // Mostrar pensamiento de que escribió
+    displayThought('escribí algo en mi diario');
+    speakThought('escribí algo en mi diario');
+
+    // Quitar animación del diario
+    const diary = document.getElementById('diaryObj');
+    if(diary) diary.classList.remove('sphere-near');
+
+  } catch(e) {
+    const diary = document.getElementById('diaryObj');
+    if(diary) diary.classList.remove('sphere-near');
+  }
+}
+
+function openDiaryModal() {
+  const modal = document.getElementById('diaryModal');
+  if(!modal) return;
+  modal.classList.add('open');
+
+  document.getElementById('diaryAiName').textContent = ai.name;
+  const entries = mind.diary || [];
+  document.getElementById('diarySubtitle').textContent =
+    entries.length === 0 ? 'sin entradas todavía' :
+    entries.length === 1 ? '1 entrada' :
+    `${entries.length} entradas`;
+
+  const container = document.getElementById('diaryEntries');
+  if(entries.length === 0) {
+    container.innerHTML = '<div class="diary-empty">La IA todavía no escribió nada...<br>Aparecerá cuando sienta algo muy fuerte.</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  // Mostrar en orden inverso (más reciente primero)
+  [...entries].reverse().forEach((entry, i) => {
+    const date = new Date(entry.time);
+    const dateStr = date.toLocaleDateString('es-AR', { weekday:'short', day:'numeric', month:'short' });
+    const timeStr = date.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+    const div = document.createElement('div');
+    div.className = 'diary-entry';
+    div.innerHTML = `
+      <div class="diary-entry-date">${dateStr} · ${timeStr}</div>
+      <div class="diary-entry-mood">${entry.emotion} · ${entry.intensity}%</div>
+      <div class="diary-entry-text">${entry.text}</div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function closeDiaryModal() {
+  const modal = document.getElementById('diaryModal');
+  if(modal) modal.classList.remove('open');
+}
+
+// Conectar checkDiaryUrge al tick de vida
+const _origLifeTick = sphereLifeTick;
 
 // CSS animations inyectadas dinámicamente
 (function(){
