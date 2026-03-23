@@ -990,17 +990,55 @@ const server = http.createServer(async (req, res) => {
         const clientTemp = parsed.temperature || null;
         const clientMaxTokens = parsed.max_tokens || 4096;
 
-        const modelPrimary  = isCoding ? 'deepseek/deepseek-r1' : 'qwen/qwen3-235b-a22b';
-        const modelFallback = isCoding ? 'qwen/qwen3-235b-a22b' : 'meta-llama/llama-4-scout-17b-16e-instruct';
+        const GROQ_KEY = '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';
 
-        async function tryOpenRouter(model) {
-          const body = JSON.stringify({
-            model,
-            messages: openaiMessages,
-            max_tokens: clientMaxTokens,
-            temperature: clientTemp !== null ? Math.min(clientTemp, 1.5) : (isCoding ? 0.3 : 0.85),
-          });
+        // Función para llamar Groq (rápido y confiable)
+        function tryGroq(model) {
           return new Promise((resolve, reject) => {
+            const body = JSON.stringify({
+              model,
+              messages: openaiMessages,
+              max_tokens: 1024,
+              temperature: 0.85,
+            });
+            const opts = {
+              hostname: 'api.groq.com',
+              path: '/openai/v1/chat/completions',
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${GROQ_KEY}`,
+                'Content-Length': Buffer.byteLength(body),
+              },
+              timeout: 20000,
+            };
+            const req = https.request(opts, (pRes) => {
+              const ch = [];
+              pRes.on('data', c => ch.push(c));
+              pRes.on('end', () => {
+                try {
+                  const d = JSON.parse(Buffer.concat(ch).toString());
+                  const r = d?.choices?.[0]?.message?.content;
+                  if(r && r.trim().length > 1) resolve(r.trim());
+                  else reject(new Error(d?.error?.message || 'vacío'));
+                } catch(e) { reject(e); }
+              });
+            });
+            req.on('error', reject);
+            req.on('timeout', () => { req.destroy(); reject(new Error('timeout groq')); });
+            req.write(body); req.end();
+          });
+        }
+
+        // Función para llamar OpenRouter
+        function tryOpenRouter(model) {
+          return new Promise((resolve, reject) => {
+            const body = JSON.stringify({
+              model,
+              messages: openaiMessages,
+              max_tokens: clientMaxTokens,
+              temperature: clientTemp !== null ? Math.min(clientTemp, 1.5) : (isCoding ? 0.3 : 0.85),
+            });
             const opts = {
               hostname: 'openrouter.ai',
               path: '/api/v1/chat/completions',
@@ -1020,43 +1058,58 @@ const server = http.createServer(async (req, res) => {
               pRes.on('end', () => {
                 try {
                   const data = JSON.parse(Buffer.concat(chunks).toString());
-                  const reply = data?.choices?.[0]?.message?.content;
-                  if (reply) resolve(reply);
-                  else reject(new Error(data?.error?.message || 'Sin respuesta'));
+                  let reply = data?.choices?.[0]?.message?.content;
+                  if(reply) {
+                    reply = reply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+                    if(reply.length > 1) resolve(reply);
+                    else reject(new Error('vacío tras limpiar'));
+                  } else reject(new Error(data?.error?.message || 'sin reply'));
                 } catch(e) { reject(e); }
               });
             });
             req.on('error', reject);
-            req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+            req.on('timeout', () => { req.destroy(); reject(new Error('timeout or')); });
             req.write(body); req.end();
           });
         }
 
-        try {
-          console.log(`[AI] Usando modelo: ${modelPrimary} (coding: ${isCoding})`);
-          let reply;
+        // Cadena de fallbacks: múltiples modelos
+        const pipeline = isCoding
+          ? [
+              ()=>tryOpenRouter('deepseek/deepseek-r1'),
+              ()=>tryOpenRouter('qwen/qwen3-235b-a22b'),
+              ()=>tryGroq('llama3-8b-8192'),
+              ()=>tryGroq('gemma2-9b-it'),
+            ]
+          : [
+              ()=>tryGroq('llama3-8b-8192'),
+              ()=>tryGroq('gemma2-9b-it'),
+              ()=>tryOpenRouter('qwen/qwen3-235b-a22b'),
+              ()=>tryGroq('llama-3.1-8b-instant'),
+            ];
+
+        let reply = null;
+        let lastError = '';
+        for(const attempt of pipeline) {
           try {
-            reply = await tryOpenRouter(modelPrimary);
+            reply = await attempt();
+            if(reply && reply.length > 1) {
+              console.log(`[AI] ✓ respuesta obtenida (${reply.length} chars)`);
+              break;
+            }
           } catch(e) {
-            console.log(`[AI] ${modelPrimary} falló, usando fallback ${modelFallback}...`);
-            reply = await tryOpenRouter(modelFallback);
+            lastError = e.message;
+            console.log(`[AI] ✗ intento falló: ${e.message}`);
           }
-          // Limpiar tags de razonamiento de DeepSeek
-          reply = reply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-          // Si después de limpiar quedó vacío, usar Groq directamente
-          if(!reply || reply.length < 2) throw new Error('respuesta vacía después de limpiar');
+        }
+
+        if(reply && reply.length > 1) {
           res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
           res.end(JSON.stringify({ reply }));
-        } catch(e) {
-          // Último fallback: Groq Llama
-          console.log('[AI] OpenRouter falló, usando Groq Llama...');
-          const GROQ_KEY = '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';
-          const groqBody = JSON.stringify({ model: 'llama3-8b-8192', messages: openaiMessages, max_tokens: 2048, temperature: 0.85 });
-          const greq = https.request({ hostname:'api.groq.com', path:'/openai/v1/chat/completions', method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${GROQ_KEY}`,'Content-Length':Buffer.byteLength(groqBody)}, timeout:30000 }, (pRes) => {
-            const ch = []; pRes.on('data',c=>ch.push(c)); pRes.on('end',()=>{ try{ const d=JSON.parse(Buffer.concat(ch).toString()); const r=d?.choices?.[0]?.message?.content; if(r){res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({reply:r}));}else{res.writeHead(500,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({error:'Sin respuesta'}));}}catch(ex){res.writeHead(500);res.end(JSON.stringify({error:ex.message}));} });
-          });
-          greq.on('error',(e)=>{res.writeHead(500,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({error:e.message}));});
-          greq.write(groqBody); greq.end();
+        } else {
+          console.log(`[AI] TODOS los modelos fallaron. Último error: ${lastError}`);
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'No pude responder ahora, intentá de nuevo.' }));
         }
       } catch(e) {
         res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
