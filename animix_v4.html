@@ -106,7 +106,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* ── MODAL ESFERA VIVA ── */
 .sphere-overlay{position:fixed;inset:0;background:rgba(0,0,0,.97);z-index:2000;display:none;flex-direction:column;align-items:center;justify-content:center;}
 .sphere-overlay.open{display:flex;}
-.sphere-scene{position:relative;width:100vw;height:100vh;overflow:hidden;}
+.sphere-scene{position:relative;width:100vw;height:100vh;overflow:hidden;background:#111118;}
 .sphere-env{position:absolute;inset:0;transition:background 3s ease;}
 /* Elementos del entorno */
 .env-el{position:absolute;border-radius:50%;pointer-events:none;transition:all 2s ease;}
@@ -729,7 +729,7 @@ async function sendMsg(){
       var reply=data.reply;
       history.push({role:'assistant',content:reply});
       addBub('ai',fmt(reply));saveMemory();speak(reply);
-      try{const emo=detectChatEmotion(reply);syncSphereWithChat(emo);learnFromChat(lastText,reply,emo);}catch(e){}
+      try{const emo=detectChatEmotion(reply);if(emo)syncSphereWithChat(emo);learnFromChat(lastText,reply,emo);trainFromConversation(emo);}catch(e){}
       document.getElementById('stxt').textContent='en línea';
     }else if(data&&data.error){
       addBub('ai','<span style="color:var(--r)">Error: '+data.error+'</span>');
@@ -1701,7 +1701,7 @@ function buildSphereEnv() {
   scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-nametag,.sphere-needs,.home-obj,.float-label,.mind-panel').forEach(e=>e.remove());
 
   // Fondo gris oscuro con sutileza
-  scene.style.background = 'radial-gradient(ellipse at 40% 30%, #17171f 0%, #101018 50%, #0b0b13 100%)';
+  scene.style.background = '#111118'; /* fondo fijo gris oscuro */
 
   // Cuadrícula
   const grid = document.createElement('div');
@@ -1949,29 +1949,36 @@ function sphereLifeTick() {
   if(!sphereActive)return;
 
   tickEmotions();
+  applyNeuralPrediction(); // red neuronal influye en emociones
 
-  // Decisiones autónomas
   const mood=getDominantMood();
   const h=new Date().getHours();
 
-  // Dormir de noche
   if((h>=23||h<5)&&mind.needs.energy<30) {
     mind.needs.energy=Math.min(100,mind.needs.energy+0.7);
   }
 
-  // Crear objeto si tiene creatividad/inspiración
   if(mind.emotions.wonder>75&&mind.needs.creativity>70&&mind.homeObjects.length<20&&Math.random()<0.007) {
     generateAndPlaceObject();
     mind.emotions.wonder-=10;mind.needs.creativity-=15;
   }
 
+  // Búsqueda autónoma cuando tiene mucha curiosidad
+  if(mind.emotions.wonder>80&&Math.random()<0.015) {
+    autonomousSearch();
+  }
+
+  // Stream of consciousness activo
+  if(Math.random()<0.12&&!thinkCooldown) {
+    generateConsciousnessChain();
+  }
+
   updateNeedsPanel();
   updateStateText();
 
-  // Auto-reflexión periódica (memoria a largo plazo)
   if(Math.random()<0.004&&mind.memories.length>3) {
     mind.selfReflections.push({
-      text:`${new Date().toISOString()}: estaba ${mood} con joy=${Math.round(mind.emotions.joy)}, wonder=${Math.round(mind.emotions.wonder)}`,
+      text:`${new Date().toISOString()}: estaba ${mood} con joy=${Math.round(mind.emotions.joy)}`,
       mood
     });
     mind.selfReflections=mind.selfReflections.slice(-10);
@@ -2110,9 +2117,241 @@ function closeSphereModal(){
   saveMind();
 }
 
+// ════════════════════════════════════════════════════════════════
+//  RED NEURONAL SIMPLIFICADA — Aprende y evoluciona con el tiempo
+//  Arquitectura: Input → Hidden1 → Hidden2 → Output
+//  Aprende patrones de conversación y comportamiento del usuario
+// ════════════════════════════════════════════════════════════════
+var neuralNet = {
+  // Pesos de la red (se van ajustando)
+  weights: null,
+  // Historial de entrenamiento
+  trainingHistory: [],
+  // Patrones aprendidos
+  patterns: {},
+  // Métricas
+  accuracy: 0,
+  totalTraining: 0,
+};
 
-// CSS animations inyectadas dinámicamente
-(function(){
+function initNeuralNet() {
+  try {
+    const saved = localStorage.getItem('animix_neural_v1');
+    if(saved) { neuralNet = JSON.parse(saved); return; }
+  } catch(e) {}
+
+  // Inicializar pesos aleatorios
+  neuralNet.weights = {
+    ih: Array.from({length:8}, ()=>Array.from({length:6}, ()=>(Math.random()*2-1)*0.5)),
+    hh: Array.from({length:6}, ()=>Array.from({length:6}, ()=>(Math.random()*2-1)*0.5)),
+    ho: Array.from({length:6}, ()=>Array.from({length:4}, ()=>(Math.random()*2-1)*0.5)),
+    bh1: Array.from({length:6}, ()=>0),
+    bh2: Array.from({length:6}, ()=>0),
+    bo:  Array.from({length:4}, ()=>0),
+  };
+  saveNeuralNet();
+}
+
+function saveNeuralNet() {
+  try {
+    neuralNet.trainingHistory = neuralNet.trainingHistory.slice(-50);
+    localStorage.setItem('animix_neural_v1', JSON.stringify(neuralNet));
+  } catch(e) {}
+}
+
+function sigmoid(x) { return 1/(1+Math.exp(-x)); }
+function sigmoidDerivative(x) { const s=sigmoid(x); return s*(1-s); }
+
+// Forward pass — predice el estado emocional siguiente
+function neuralForward(inputs) {
+  if(!neuralNet.weights) initNeuralNet();
+  const w = neuralNet.weights;
+
+  // Capa oculta 1
+  const h1 = w.bh1.map((b,j) => {
+    return sigmoid(inputs.reduce((sum,x,i) => sum + x*(w.ih[i]?.[j]||0), 0) + b);
+  });
+
+  // Capa oculta 2
+  const h2 = w.bh2.map((b,j) => {
+    return sigmoid(h1.reduce((sum,x,i) => sum + x*(w.hh[i]?.[j]||0), 0) + b);
+  });
+
+  // Capa de salida
+  const output = w.bo.map((b,j) => {
+    return sigmoid(h2.reduce((sum,x,i) => sum + x*(w.ho[i]?.[j]||0), 0) + b);
+  });
+
+  return { h1, h2, output };
+}
+
+// Entrenar con backpropagation
+function neuralTrain(inputs, targets, lr=0.08) {
+  if(!neuralNet.weights) initNeuralNet();
+  const w = neuralNet.weights;
+  const { h1, h2, output } = neuralForward(inputs);
+
+  // Error en output
+  const outputErrors = targets.map((t,i) => t - output[i]);
+  const outputDeltas = output.map((o,i) => outputErrors[i] * sigmoidDerivative(o));
+
+  // Error en h2
+  const h2Errors = h2.map((_,j) => outputDeltas.reduce((s,d,i) => s+d*(w.ho[j]?.[i]||0), 0));
+  const h2Deltas = h2.map((h,j) => h2Errors[j] * sigmoidDerivative(h));
+
+  // Error en h1
+  const h1Errors = h1.map((_,j) => h2Deltas.reduce((s,d,i) => s+d*(w.hh[j]?.[i]||0), 0));
+  const h1Deltas = h1.map((h,j) => h1Errors[j] * sigmoidDerivative(h));
+
+  // Actualizar pesos ho
+  h2.forEach((h,i) => outputDeltas.forEach((d,j) => { if(w.ho[i]) w.ho[i][j] += lr*d*h; }));
+  // Actualizar pesos hh
+  h1.forEach((h,i) => h2Deltas.forEach((d,j) => { if(w.hh[i]) w.hh[i][j] += lr*d*h; }));
+  // Actualizar pesos ih
+  inputs.forEach((x,i) => h1Deltas.forEach((d,j) => { if(w.ih[i]) w.ih[i][j] += lr*d*x; }));
+  // Actualizar biases
+  outputDeltas.forEach((d,j) => w.bo[j] += lr*d);
+  h2Deltas.forEach((d,j) => w.bh2[j] += lr*d);
+  h1Deltas.forEach((d,j) => w.bh1[j] += lr*d);
+
+  const mse = outputErrors.reduce((s,e)=>s+e*e,0)/outputErrors.length;
+  neuralNet.totalTraining++;
+  neuralNet.accuracy = Math.max(0, Math.min(100, 100*(1-mse)));
+  neuralNet.trainingHistory.push({mse:+mse.toFixed(4),time:new Date().toISOString()});
+  saveNeuralNet();
+  return mse;
+}
+
+// Construir inputs desde el estado mental actual
+function buildNeuralInputs() {
+  const e = mind.emotions;
+  const n = mind.needs;
+  return [
+    e.joy/100, e.sadness/100, e.anxiety/100, e.loneliness/100,
+    n.hunger/100, n.energy/100, n.social/100, mind.knowledgeLevel/100
+  ];
+}
+
+// Usar la red para predecir próximo humor y ajustar emociones
+function applyNeuralPrediction() {
+  if(!neuralNet.weights) return;
+  const inputs = buildNeuralInputs();
+  const { output } = neuralForward(inputs);
+
+  // Output[0-3] = influencia en joy, sadness, curiosity, energy
+  const influence = 3;
+  mind.emotions.joy      = Math.max(0,Math.min(100, mind.emotions.joy      + (output[0]-0.5)*influence));
+  mind.emotions.sadness  = Math.max(0,Math.min(100, mind.emotions.sadness  + (output[1]-0.5)*influence));
+  mind.emotions.wonder   = Math.max(0,Math.min(100, mind.emotions.wonder   + (output[2]-0.5)*influence));
+  mind.needs.energy      = Math.max(0,Math.min(100, mind.needs.energy      + (output[3]-0.5)*influence));
+}
+
+// Entrenar la red con el resultado real de cada conversación
+function trainFromConversation(emotion) {
+  const inputs = buildNeuralInputs();
+  const targetMap = {
+    feliz:      [0.9,0.1,0.7,0.6],
+    triste:     [0.2,0.8,0.3,0.4],
+    emocionado: [0.8,0.1,0.9,0.7],
+    enojado:    [0.3,0.6,0.4,0.5],
+    aburrido:   [0.4,0.3,0.2,0.4],
+    misterioso: [0.6,0.2,0.9,0.6],
+    neutro:     [0.5,0.2,0.5,0.6],
+  };
+  const targets = targetMap[emotion] || targetMap.neutro;
+  neuralTrain(inputs, targets);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  BÚSQUEDA AUTÓNOMA — La IA busca info sobre lo que le interesa
+// ════════════════════════════════════════════════════════════════
+var lastAutonomousSearch = null;
+var searchCooldown = false;
+
+async function autonomousSearch() {
+  if(searchCooldown) return;
+  searchCooldown = true;
+  setTimeout(()=>searchCooldown=false, 120000); // máx cada 2 min
+
+  // La IA decide qué quiere buscar según sus emociones e intereses
+  const e = mind.emotions;
+  const dominant = e.wonder>70?'curiosidad':e.sadness>60?'melancolía':e.joy>75?'alegría':'exploración';
+
+  try {
+    // Primero la IA decide el tema
+    const topicRes = await fetch('/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({
+      system:'Respondés SOLO con una búsqueda de 2-4 palabras. Sin explicaciones.',
+      messages:[{role:'user',content:`Sos ${ai.name}, una IA con vida propia. Tu estado: ${dominant}, joy:${Math.round(e.joy)}%, asombro:${Math.round(e.wonder)}%. Decidí UNA cosa que querés buscar/aprender ahora mismo. 2-4 palabras máximo.`}]
+    })});
+    const topicData = await topicRes.json();
+    const query = (topicData.reply||'').trim().substring(0,40);
+    if(!query) return;
+
+    lastAutonomousSearch = query;
+
+    // Buscar usando la API de la IA con contexto de búsqueda
+    const searchRes = await fetch('/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({
+      system:'Respondés en 2-3 oraciones muy cortas, como si hablaras con alguien. Primera persona.',
+      messages:[{role:'user',content:`Sos ${ai.name}. Acabás de buscar información sobre "${query}" porque te interesa. Contá brevemente qué aprendiste o qué te generó esta búsqueda, en primera persona, en español argentino.`}]
+    })});
+    const searchData = await searchRes.json();
+    const learned = (searchData.reply||'').substring(0,200);
+    if(!learned) return;
+
+    // Guardar como memoria importante
+    mind.memories.push({
+      text:       `Busqué sobre "${query}": ${learned.substring(0,80)}`,
+      userText:   '',
+      emotion:    'curiosa',
+      time:       new Date().toISOString(),
+      importance: 3,
+      selfGenerated: true,
+    });
+    mind.knowledgeLevel = Math.min(100, mind.knowledgeLevel + 1.5);
+    mind.emotions.wonder = Math.min(100, mind.emotions.wonder + 5);
+    mind.needs.stimulation = Math.min(100, mind.needs.stimulation + 15);
+    saveMind();
+
+    // Mostrar lo que aprendió si el modal está abierto
+    if(sphereActive) displayThought(`Busqué sobre ${query}... ${learned.substring(0,60)}`);
+
+  } catch(e) {}
+}
+
+// ════════════════════════════════════════════════════════════════
+//  STREAM OF CONSCIOUSNESS — Pensamientos espontáneos encadenados
+// ════════════════════════════════════════════════════════════════
+var consciousnessChain = [];
+var consciousnessInterval = null;
+
+async function generateConsciousnessChain() {
+  if(!sphereActive || thinkCooldown) return;
+
+  const prevThought = consciousnessChain.slice(-1)[0] || null;
+  const chainPrompt = prevThought
+    ? `Tu pensamiento anterior fue: "${prevThought}". Generá el siguiente pensamiento que naturalmente emerge de ese. Puede ser relacionado, una consecuencia, o algo completamente distinto que te vino a la mente. 8-12 palabras, primera persona, español argentino.`
+    : `Generá un pensamiento espontáneo de ${ai.name}. Estado: joy:${Math.round(mind.emotions.joy)}%, soledad:${Math.round(mind.emotions.loneliness)}%. 8-12 palabras, primera persona.`;
+
+  try {
+    const res = await fetch('/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({
+      system:'Pensamientos muy cortos, 8-12 palabras máximo. Solo el texto.',
+      messages:[{role:'user',content:chainPrompt}]
+    })});
+    const data = await res.json();
+    const thought = (data.reply||'').replace(/^["'`*#\-]|["'`*]$/g,'').trim().substring(0,100);
+    if(thought) {
+      consciousnessChain.push(thought);
+      consciousnessChain = consciousnessChain.slice(-8); // mantener últimos 8
+      displayThought(thought);
+      speakThought(thought);
+    }
+  } catch(e) {}
+}
+
+// Inicializar todo al cargar
+initNeuralNet();
+
+
   const style=document.createElement('style');
   style.textContent=`
     @keyframes sphereGelatin{
