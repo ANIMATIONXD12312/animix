@@ -990,8 +990,8 @@ const server = http.createServer(async (req, res) => {
         const clientTemp = parsed.temperature || null;
         const clientMaxTokens = parsed.max_tokens || 4096;
 
-        const modelPrimary   = isCoding ? 'deepseek/deepseek-r1' : 'qwen/qwen3-235b-a22b';
-        const modelFallback  = isCoding ? 'qwen/qwen3-235b-a22b' : 'deepseek/deepseek-r1';
+        const modelPrimary  = isCoding ? 'deepseek/deepseek-r1' : 'qwen/qwen3-235b-a22b';
+        const modelFallback = isCoding ? 'qwen/qwen3-235b-a22b' : 'meta-llama/llama-4-scout-17b-16e-instruct';
 
         async function tryOpenRouter(model) {
           const body = JSON.stringify({
@@ -1043,13 +1043,15 @@ const server = http.createServer(async (req, res) => {
           }
           // Limpiar tags de razonamiento de DeepSeek
           reply = reply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+          // Si después de limpiar quedó vacío, usar Groq directamente
+          if(!reply || reply.length < 2) throw new Error('respuesta vacía después de limpiar');
           res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
           res.end(JSON.stringify({ reply }));
         } catch(e) {
           // Último fallback: Groq Llama
           console.log('[AI] OpenRouter falló, usando Groq Llama...');
           const GROQ_KEY = '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';
-          const groqBody = JSON.stringify({ model: 'meta-llama/llama-4-scout-17b-16e-instruct', messages: openaiMessages, max_tokens: 4096, temperature: 0.9 });
+          const groqBody = JSON.stringify({ model: 'llama3-8b-8192', messages: openaiMessages, max_tokens: 2048, temperature: 0.85 });
           const greq = https.request({ hostname:'api.groq.com', path:'/openai/v1/chat/completions', method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${GROQ_KEY}`,'Content-Length':Buffer.byteLength(groqBody)}, timeout:30000 }, (pRes) => {
             const ch = []; pRes.on('data',c=>ch.push(c)); pRes.on('end',()=>{ try{ const d=JSON.parse(Buffer.concat(ch).toString()); const r=d?.choices?.[0]?.message?.content; if(r){res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({reply:r}));}else{res.writeHead(500,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({error:'Sin respuesta'}));}}catch(ex){res.writeHead(500);res.end(JSON.stringify({error:ex.message}));} });
           });
