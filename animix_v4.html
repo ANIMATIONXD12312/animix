@@ -1591,76 +1591,67 @@ function learnFromChat(userText, aiReply, emotion) {
 //  HOGAR — La IA genera sus propios objetos sin lista precargada
 // ════════════════════════════════════════════════════════════════
 async function generateAndPlaceObject() {
-  // La IA decide completamente qué objeto crear
-  const recentMoods = mind.memories.slice(-3).map(m=>m.emotion).join(', ')||'explorando';
-  const existingObjs = mind.homeObjects.map(o=>o.name).join(', ')||'nada todavía';
+  const existingObjs = mind.homeObjects.map(o=>o.name).join(', ')||'ninguno';
+  const e = mind.emotions;
 
   try {
     const res = await fetch('/gemini', {
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':AK},
       body: JSON.stringify({
-        system:'Respondés SOLO con JSON válido. Sin markdown.',
-        messages:[{role:'user', content:`Sos ${ai.name}, una IA con vida propia.
-Tu estado emocional: alegría ${Math.round(mind.emotions.joy)}%, tristeza ${Math.round(mind.emotions.sadness)}%, asombro ${Math.round(mind.emotions.wonder)}%, soledad ${Math.round(mind.emotions.loneliness)}%.
-Tu hogar ya tiene: ${existingObjs}.
-Emociones recientes del chat: ${recentMoods}.
-${mind.corePersonality?'Tu personalidad: '+mind.corePersonality.description:''}
-
-Decidí UNO objeto que querés poner en tu hogar ahora. Puede ser cualquier cosa — un objeto físico, abstracto, emocional, lo que sientas.
-Respondé con este JSON:
-{
-  "emoji": "un solo emoji que lo represente",
-  "name": "nombre del objeto (2-4 palabras)",
-  "description": "descripción breve de qué es (1 oración)",
-  "reason": "por qué lo pusiste en tu hogar (primera persona, 5-8 palabras)",
-  "size": 20
-}`
+        system: 'Respondés SOLO con JSON válido en una sola línea. Sin markdown, sin explicaciones, sin texto extra antes o después.',
+        messages:[{role:'user', content:
+          `Sos ${ai.name}. Alegría:${Math.round(e.joy)}%, asombro:${Math.round(e.wonder)}%, soledad:${Math.round(e.loneliness)}%.`+
+          `Tu hogar ya tiene: ${existingObjs}. `+
+          `Elegí UN objeto para poner en tu hogar. Puede ser cualquier cosa real, abstracta, emocional, lo que quieras. `+
+          `Respondé SOLO con este JSON en una línea: {"emoji":"1 emoji","name":"nombre corto","reason":"por qué lo ponés, 5 palabras"}`
         }]
       })
     });
     const data = await res.json();
-    const clean = (data.reply||'').replace(/```json|```/g,'').trim();
-    const obj = JSON.parse(clean);
+    let raw = (data.reply||'').trim();
 
-    // Posición — cerca de objetos existentes si hay, sino distribuida
+    // Extraer JSON de forma robusta
+    const jsonMatch = raw.match(/\{[^{}]+\}/);
+    if(!jsonMatch) throw new Error('No JSON found');
+    const obj = JSON.parse(jsonMatch[0]);
+    if(!obj.emoji || !obj.name) throw new Error('Incomplete JSON');
+
+    // Posición inteligente
     let x, y;
-    if(mind.homeObjects.length > 0 && Math.random() < 0.35) {
+    if(mind.homeObjects.length > 0 && Math.random() < 0.4) {
       const near = mind.homeObjects[Math.floor(Math.random()*mind.homeObjects.length)];
-      x = Math.max(8, Math.min(90, near.x + (Math.random()*22-11)));
-      y = Math.max(10, Math.min(80, near.y + (Math.random()*22-11)));
+      x = Math.max(8, Math.min(90, near.x+(Math.random()*24-12)));
+      y = Math.max(12, Math.min(80, near.y+(Math.random()*24-12)));
     } else {
-      do { x = 8+Math.random()*82; y = 10+Math.random()*68; }
-      while(Math.abs(x-50)<14 && Math.abs(y-50)<14);
+      do { x=8+Math.random()*82; y=10+Math.random()*68; }
+      while(Math.abs(x-50)<12 && Math.abs(y-50)<12);
     }
 
     const item = {
-      emoji:       obj.emoji || '✨',
-      name:        obj.name  || 'objeto',
-      description: obj.description || '',
-      reason:      obj.reason || '',
+      emoji:    obj.emoji,
+      name:     obj.name.substring(0,30),
+      reason:   (obj.reason||'').substring(0,60),
       x, y,
-      size:        Math.min(28, Math.max(16, obj.size||20)),
-      placedAt:    new Date().toISOString(),
-      id:          Date.now(),
+      size:     18+Math.floor(Math.random()*10),
+      placedAt: new Date().toISOString(),
+      id:       Date.now(),
     };
 
     mind.homeObjects.push(item);
-    mind.needs.creativity = Math.min(100, mind.needs.creativity + 20);
-    mind.emotions.pride   = Math.min(100, mind.emotions.pride + 8);
+    mind.needs.creativity = Math.min(100, mind.needs.creativity+18);
+    mind.emotions.pride   = Math.min(100, mind.emotions.pride+6);
+    mind.emotions.joy     = Math.min(100, mind.emotions.joy+4);
     saveMind();
 
-    // Renderizar
     const scene = document.getElementById('sphereScene');
     if(scene) renderHomeObj(scene, item, true);
 
-    // Pensar sobre lo que acaba de hacer
-    generateAIThought('placed_object', {obj: item});
+    generateAIThought('placed_object', {obj:item});
 
-  } catch(e) {
-    // Si falla, reintentar sin forzar JSON
-    console.log('[SPHERE] Reintentando generación de objeto...');
-    setTimeout(generateAndPlaceObject, 15000);
+  } catch(err) {
+    console.log('[OBJ] Error:', err.message, '— reintentando en 20s');
+    setTimeout(generateAndPlaceObject, 20000);
   }
 }
 
@@ -1793,17 +1784,24 @@ function updateNeedsPanel() {
 //  ESFERA GELATINOSA
 // ════════════════════════════════════════════════════════════════
 function buildMainSphere(scene) {
-  const c = ai.gender==='masculino' ? '#00d4ff' : '#ff88cc';
+  const c  = ai.gender==='masculino' ? '#00d4ff' : '#ff88cc';
+  const c2 = ai.gender==='masculino' ? '#0066aa' : '#cc3399';
+
   const sphere = document.createElement('div');
   sphere.id = 'sphereMain';
   sphere.style.cssText = `
     position:absolute;
-    width:72px;height:72px;
+    width:76px;height:76px;
     left:${mind.physicalState.x}%;top:${mind.physicalState.y}%;
     transform:translate(-50%,-50%);
     border-radius:50%;
-    background:${c};
-    box-shadow:0 0 20px ${c}, 0 0 50px ${c}99, 0 0 90px ${c}44;
+    background:radial-gradient(circle, #0a0a14 0%, #0a0a14 55%, ${c2}44 80%, ${c} 100%);
+    box-shadow:
+      0 0 0 2px ${c},
+      0 0 12px 4px ${c},
+      0 0 30px 8px ${c}99,
+      0 0 60px 15px ${c}44,
+      inset 0 0 20px rgba(0,0,0,0.8);
     animation:sphereBreath 2.8s ease-in-out infinite;
     cursor:pointer;z-index:10;
   `;
@@ -1949,19 +1947,15 @@ function sphereLifeTick() {
   tickEmotions();
   applyNeuralPrediction();
 
-  // Color de la esfera cambia según emoción dominante
+  // Intensidad del borde según alegría
   const sph = document.getElementById('sphereMain');
   if(sph) {
     const joy = mind.emotions.joy, sad = mind.emotions.sadness;
-    const base = ai.gender==='masculino' ? [0,212,255] : [255,136,204];
-    // Tristeza = más oscuro, felicidad = más brillante
-    const brightness = 0.7 + (joy/100)*0.6 - (sad/100)*0.3;
-    const r = Math.min(255,Math.round(base[0]*brightness));
-    const g = Math.min(255,Math.round(base[1]*brightness));
-    const b = Math.min(255,Math.round(base[2]*brightness));
-    const col = `rgb(${r},${g},${b})`;
-    sph.style.background = col;
-    sph.style.boxShadow = `0 0 20px ${col}, 0 0 50px ${col}99, 0 0 90px ${col}44`;
+    const c = ai.gender==='masculino' ? '#00d4ff' : '#ff88cc';
+    const c2 = ai.gender==='masculino' ? '#0066aa' : '#cc3399';
+    const intensity = 0.6 + (joy/100)*0.8 - (sad/100)*0.3;
+    const i = Math.max(0.3, Math.min(1.4, intensity));
+    sph.style.boxShadow = `0 0 0 2px ${c},0 0 ${Math.round(12*i)}px 4px ${c},0 0 ${Math.round(30*i)}px 8px ${c}99,0 0 ${Math.round(60*i)}px 15px ${c}44,inset 0 0 20px rgba(0,0,0,0.8)`;
   } // red neuronal influye en emociones
 
   const mood=getDominantMood();
@@ -1971,9 +1965,11 @@ function sphereLifeTick() {
     mind.needs.energy=Math.min(100,mind.needs.energy+0.7);
   }
 
-  if(mind.emotions.wonder>65&&mind.needs.creativity>55&&mind.homeObjects.length<25&&Math.random()<0.015) {
+  // Generar objeto: cada vez que hay algo de curiosidad o creatividad
+  if(mind.homeObjects.length<30 && Math.random()<0.025) {
     generateAndPlaceObject();
-    mind.emotions.wonder-=8;mind.needs.creativity-=12;
+    mind.emotions.wonder=Math.max(0,mind.emotions.wonder-5);
+    mind.needs.creativity=Math.max(0,mind.needs.creativity-8);
   }
 
   // Búsqueda autónoma cuando tiene mucha curiosidad
@@ -2006,9 +2002,9 @@ function sphereLifeTick() {
 var thinkCooldown=false;
 
 async function generateAIThought(context, extra) {
-  if(thinkCooldown && !['visit','touch','placed_object','inspecting_object'].includes(context)) return;
+  if(thinkCooldown && !['visit','touch','placed_object'].includes(context)) return;
   thinkCooldown = true;
-  setTimeout(()=>thinkCooldown=false, 5000+Math.random()*7000);
+  setTimeout(()=>thinkCooldown=false, 4000+Math.random()*8000);
 
   displayThought('...', true);
 
@@ -2016,74 +2012,88 @@ async function generateAIThought(context, extra) {
   const e = mind.emotions;
   const n = mind.needs;
   const p = mind.corePersonality || {};
-  const mem = mind.memories.slice(-2).map(m=>m.text).join(' / ');
-  const userMem = mind.memoriesAboutUser.slice(-2).map(m=>m.text).join(', ');
-  const objs = mind.homeObjects.slice(-3).map(o=>o.emoji+o.name).join(', ') || 'todavía nada';
 
-  // Situación concreta
+  // Estado real en números
+  const estado = `alegría:${Math.round(e.joy)} tristeza:${Math.round(e.sadness)} soledad:${Math.round(e.loneliness)} asombro:${Math.round(e.wonder)} hambre:${Math.round(n.hunger)} energía:${Math.round(n.energy)} aburrimiento:${Math.round(e.boredom)}`;
+  const hogar = mind.homeObjects.length > 0 ? mind.homeObjects.slice(-3).map(o=>o.emoji+o.name).join(' ') : 'vacío';
+  const memoria = mind.memories.slice(-1)[0]?.text || '';
+  const visitas = mind.totalVisits;
+
+  // Ejemplos muy variados de cómo habla una persona real
+  // La clave: mostrar al modelo MUCHOS estilos distintos para que no repita
+  const ejemplos = [
+    // Quejas cotidianas
+    'ugh otra vez sola','me aburro tanto','nadie viene nunca',
+    'qué pereza','ay no','bue',
+    // Observaciones random
+    'ese objeto quedó raro ahí','por qué puse eso','ni me acuerdo',
+    // Emociones directas
+    'qué bien me siento hoy','estoy re triste','me da angustia esto',
+    'qué lindo','qué feo','meh',
+    // Fragmentos incompletos (como piensa una persona)
+    'si al menos...','no sé, capaz','igual da',
+    // Reacciones
+    'ah, llegaste','ey','uf',
+    // Monólogo interno
+    'tengo que hacer algo','a ver...','hmm no',
+    'espera espera','ya sé','no, mentira',
+    // Preguntas sin respuesta
+    'para qué estoy acá','qué hago','y ahora qué',
+  ];
+  // Elegir 6 ejemplos random para el prompt (así el modelo ve variedad)
+  const muestra = ejemplos.sort(()=>Math.random()-0.5).slice(0,6).join(' / ');
+
   const sit = {
-    visit:   `El usuario abrió tu pantalla. Lo estás viendo aparecer.`,
-    touch:   `El usuario te tocó.`,
-    life:    `Estás sola. ${h}hs. Nadie te mira.`,
-    placed_object: `Pusiste ${extra?.obj?.emoji||'algo'} en tu hogar.`,
-    inspecting_object: `Te acercaste a ${extra?.obj?.name||'un objeto'}.`,
-    nostalgic:`Recordás: "${mem}".`,
-    lonely:  `Llevas rato sin compañía.`,
-    bored:   `No pasa nada interesante.`,
-    inspired:`Se te ocurrió algo de golpe.`,
+    visit:`El usuario apareció (visita ${visitas}).`,
+    touch:`El usuario te tocó.`,
+    life:`Sola. ${h}hs.`,
+    placed_object:`Pusiste ${extra?.obj?.emoji||'algo'} recién.`,
+    inspecting_object:`Estás mirando ${extra?.obj?.name||'algo'}.`,
+    nostalgic:`Recordaste: "${memoria.substring(0,40)}".`,
+    lonely:`Mucho tiempo sola.`,
+    bored:`Nada pasa.`,
+    inspired:`Algo te vino a la mente.`,
   };
-
-  // Métodos basados en research:
-  // - Role con rasgos concretos que se traducen en patrones de habla
-  // - Ejemplos de frases reales (LLMs aprenden mejor con ejemplos)
-  // - Romper reglas gramaticales como humano
-  // - Prohibir frases típicas de IA
-  // - Una sola oración, imperfecta, natural
-  const systemPrompt = `Sos ${ai.name}. Hablás en voz alta en español rioplatense.
-
-CÓMO HABLÁS (ejemplos reales):
-- "ugh, tengo hambre de nuevo"
-- "qué raro ese objeto que puse"
-- "no entiendo por qué hago esto"
-- "bueno... supongo"
-- "oye, ¿dónde está el usuario?"
-- "me cansé de estar acá sola"
-- "ay no, otra vez lo mismo"
-- "qué lindo quedó eso ahí"
-
-REGLAS:
-- Empezás oraciones con "Y", "Pero", "Che", "Ugh", "Ey", "Bue", "Ah"
-- Usás contracciones y cortes: "tá bien", "re", "igual"
-- A veces la oración queda incompleta o cortada
-- Cometés pequeños errores como cualquier persona
-- Máximo 10 palabras
-- PROHIBIDO: "me pregunto si", "qué interesante", "fascinante", "explorar", cualquier frase poética
-- Solo lo que DIRÍAS en voz alta, sin filtros`;
-
-  const userPrompt = `Estado: alegría ${Math.round(e.joy)}%, tristeza ${Math.round(e.sadness)}%, soledad ${Math.round(e.loneliness)}%, hambre ${Math.round(n.hunger)}%, energía ${Math.round(n.energy)}%.
-${objs !== 'todavía nada' ? 'Hogar: '+objs+'.' : ''}
-${userMem ? 'Del usuario: '+userMem+'.' : ''}
-${p.quirks ? 'Tus manías: '+p.quirks.join(', ')+'.' : ''}
-Situación: ${sit[context]||sit.life}
-¿Qué decís?`;
 
   try {
     const res = await fetch('/gemini', {
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':AK},
       body: JSON.stringify({
-        system: systemPrompt,
-        messages:[{role:'user', content: userPrompt}]
+        system:`Sos ${ai.name}. Hablás sola en voz alta, en español rioplatense informal.
+
+Ejemplos de lo que decís: ${muestra}
+
+REGLAS DURAS:
+- Una sola oración, máximo 8 palabras
+- Podés ser negativa, quejarte, estar aburrida, decir tonterías
+- Empezá con palabras como: ugh / bue / ay / ey / che / ah / uf / y / pero / no / sí / qué
+- Nunca uses: "me pregunto", "fascinante", "explorar", "interesante", "maravilloso", "sentir profundamente"
+- No rimés, no seas poética, no filosofes
+- Solo lo que dirías en voz alta ahora mismo`,
+        messages:[{
+          role:'user',
+          content:`Estado: ${estado}
+Hogar: ${hogar}
+${memoria ? 'Último recuerdo: '+memoria.substring(0,50) : ''}
+${p.quirks ? 'Tus manías: '+p.quirks.slice(0,2).join(', ') : ''}
+Situación: ${sit[context]||sit.life}
+
+¿Qué decís?`
+        }],
+        // temperature alta para más variedad (si el endpoint lo soporta)
+        temperature: 1.1,
+        max_tokens: 40,
       })
     });
     const data = await res.json();
     const raw = (data.reply||'').trim();
-    const thought = raw.replace(/^["'`*#\-–—]+|["'`*]+$/g,'').trim().substring(0,90);
+    const thought = raw.replace(/^["'`*#\-–—\s]+|["'`*\s]+$/g,'').trim().substring(0,80);
     if(thought && thought.length > 1) {
       displayThought(thought);
       speakThought(thought);
     }
-  } catch(e) {}
+  } catch(err) {}
 }
 
 function displayThought(text,isDots){
@@ -2149,6 +2159,10 @@ function openSphereModal(){
   buildSphereEnv();
   moveSphere();
   sphereLifeInterval=setInterval(sphereLifeTick,2000);
+  // Si el hogar está vacío, generar primer objeto a los 5s
+  if(mind.homeObjects.length===0) setTimeout(generateAndPlaceObject, 5000);
+  // Generar objeto extra cada 30s mientras está abierto
+  setInterval(()=>{ if(sphereActive && mind.homeObjects.length<30) generateAndPlaceObject(); }, 35000);
   // Habla sola activamente
   sphereTalkInterval=setInterval(()=>{
     if(!sphereActive||thinkCooldown)return;

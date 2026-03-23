@@ -796,7 +796,7 @@ const server = http.createServer(async (req, res) => {
   if (urlObj.pathname === '/gemini' && req.method === 'POST') {
     let body = '';
     req.on('data', c => body += c);
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const parsed = JSON.parse(body);
         const systemText = parsed.system || '';
@@ -828,54 +828,85 @@ const server = http.createServer(async (req, res) => {
           } catch(e) { console.log('Error parsing message:', e.message); }
         });
 
-        const groqBody = JSON.stringify({
-          model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-          messages: openaiMessages,
-          max_tokens: 4096,
-          temperature: 0.9,
-        });
+        // Sistema de modelos híbrido: DeepSeek R1 + Qwen 3 via OpenRouter
+        // DeepSeek R1 para razonamiento y código, Qwen 3 como fallback
+        const OR_KEY = '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';
 
-        const GROQ_KEY = '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';
+        // Detectar si es pregunta de código/programación para usar el mejor modelo
+        const lastMsg = openaiMessages[openaiMessages.length-1];
+        const lastText = typeof lastMsg?.content === 'string' ? lastMsg.content.toLowerCase() : '';
+        const isCoding = /\bcode\b|\bcódigo\b|\bprograma\b|\bfunción\b|\bscript\b|\bapi\b|\bhtml\b|\bcss\b|\bjs\b|\bpython\b|\bjava\b|\bsql\b|\bbug\b|\berror\b|\bdebug\b|\balgorithm\b|\balgoritmo\b/.test(lastText);
 
-        const opts = {
-          hostname: 'api.groq.com',
-          path: '/openai/v1/chat/completions',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${GROQ_KEY}`,
-            'Content-Length': Buffer.byteLength(groqBody),
-          },
-          timeout: 30000,
-        };
+        // Temperatura del cliente (para pensamientos de la esfera necesita alta variedad)
+        const clientTemp = parsed.temperature || null;
+        const clientMaxTokens = parsed.max_tokens || 4096;
 
-        const pr = https.request(opts, (pRes) => {
-          const chunks = [];
-          pRes.on('data', c => chunks.push(c));
-          pRes.on('end', () => {
-            try {
-              const data = JSON.parse(Buffer.concat(chunks).toString());
-              const reply = data?.choices?.[0]?.message?.content;
-              if (reply) {
-                res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-                res.end(JSON.stringify({ reply }));
-              } else {
-                const errMsg = data?.error?.message || JSON.stringify(data);
-                res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-                res.end(JSON.stringify({ error: errMsg }));
-              }
-            } catch(e) {
-              res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-              res.end(JSON.stringify({ error: e.message }));
-            }
+        const modelPrimary   = isCoding ? 'deepseek/deepseek-r1' : 'qwen/qwen3-235b-a22b';
+        const modelFallback  = isCoding ? 'qwen/qwen3-235b-a22b' : 'deepseek/deepseek-r1';
+
+        async function tryOpenRouter(model) {
+          const body = JSON.stringify({
+            model,
+            messages: openaiMessages,
+            max_tokens: clientMaxTokens,
+            temperature: clientTemp !== null ? Math.min(clientTemp, 1.5) : (isCoding ? 0.3 : 0.85),
           });
-        });
-        pr.on('error', (e) => {
-          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-          res.end(JSON.stringify({ error: e.message }));
-        });
-        pr.write(groqBody);
-        pr.end();
+          return new Promise((resolve, reject) => {
+            const opts = {
+              hostname: 'openrouter.ai',
+              path: '/api/v1/chat/completions',
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${OR_KEY}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://animix-production-3488.up.railway.app',
+                'X-Title': 'ANIMIX',
+                'Content-Length': Buffer.byteLength(body),
+              },
+              timeout: 45000,
+            };
+            const req = https.request(opts, (pRes) => {
+              const chunks = [];
+              pRes.on('data', c => chunks.push(c));
+              pRes.on('end', () => {
+                try {
+                  const data = JSON.parse(Buffer.concat(chunks).toString());
+                  const reply = data?.choices?.[0]?.message?.content;
+                  if (reply) resolve(reply);
+                  else reject(new Error(data?.error?.message || 'Sin respuesta'));
+                } catch(e) { reject(e); }
+              });
+            });
+            req.on('error', reject);
+            req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+            req.write(body); req.end();
+          });
+        }
+
+        try {
+          console.log(`[AI] Usando modelo: ${modelPrimary} (coding: ${isCoding})`);
+          let reply;
+          try {
+            reply = await tryOpenRouter(modelPrimary);
+          } catch(e) {
+            console.log(`[AI] ${modelPrimary} falló, usando fallback ${modelFallback}...`);
+            reply = await tryOpenRouter(modelFallback);
+          }
+          // Limpiar tags de razonamiento de DeepSeek
+          reply = reply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ reply }));
+        } catch(e) {
+          // Último fallback: Groq Llama
+          console.log('[AI] OpenRouter falló, usando Groq Llama...');
+          const GROQ_KEY = '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';
+          const groqBody = JSON.stringify({ model: 'meta-llama/llama-4-scout-17b-16e-instruct', messages: openaiMessages, max_tokens: 4096, temperature: 0.9 });
+          const greq = https.request({ hostname:'api.groq.com', path:'/openai/v1/chat/completions', method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${GROQ_KEY}`,'Content-Length':Buffer.byteLength(groqBody)}, timeout:30000 }, (pRes) => {
+            const ch = []; pRes.on('data',c=>ch.push(c)); pRes.on('end',()=>{ try{ const d=JSON.parse(Buffer.concat(ch).toString()); const r=d?.choices?.[0]?.message?.content; if(r){res.writeHead(200,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({reply:r}));}else{res.writeHead(500,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({error:'Sin respuesta'}));}}catch(ex){res.writeHead(500);res.end(JSON.stringify({error:ex.message}));} });
+          });
+          greq.on('error',(e)=>{res.writeHead(500,{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'});res.end(JSON.stringify({error:e.message}));});
+          greq.write(groqBody); greq.end();
+        }
       } catch(e) {
         res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: 'JSON inválido: ' + e.message }));
