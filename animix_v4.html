@@ -1201,11 +1201,13 @@ async function callAskAI(userText) {
     // También agregar al chat principal
     addBub('u', userText); addBub('ai', fmt(reply)); saveMemory();
 
-    // PARAR el grabador mientras la IA habla (evita que grabe su propia voz)
+    // SILENCIAR MIC FÍSICAMENTE mientras la IA habla
+    setMicEnabled(false);
+    // Parar grabador y limpiar todo
     if (callMediaRecorder && callMediaRecorder.state !== 'inactive') {
       try { callMediaRecorder.stop(); } catch(e) {}
     }
-    callChunks = []; // limpiar chunks acumulados
+    callChunks = [];
     callVADActive = false;
     callSilenceStart = null;
     callSpeechStart = null;
@@ -1217,17 +1219,20 @@ async function callAskAI(userText) {
     const onAIFinished = () => {
       callCurrentAudio = null;
       if (!callActive) return;
-      setCallStatus('Escuchando...');
-      setCallOrb('listening');
-      setCallVad('');
-      // Esperar 600ms extra antes de reactivar el grabador
-      // (para que el eco del altavoz no se capture)
+      // Reactivar micrófono SOLO después de que terminó completamente
+      // + 800ms de buffer para que el eco del altavoz se disipe
       setTimeout(() => {
-        if (callActive && !callMuted) {
-          callChunks = [];
-          startMediaRecorder();
-        }
-      }, 600);
+        if (!callActive) return;
+        callChunks = [];
+        callVADActive = false;
+        callSilenceStart = null;
+        callSpeechStart = null;
+        setMicEnabled(true);
+        if (!callMuted) startMediaRecorder();
+        setCallStatus('Escuchando...');
+        setCallOrb('listening');
+        setCallVad('');
+      }, 800);
     };
 
     if (audio && callActive) {
@@ -1296,6 +1301,15 @@ function runVAD() {
     }
   }
   tick();
+}
+
+// Silenciar/activar micrófono físicamente (la forma más efectiva)
+function setMicEnabled(enabled) {
+  if (callMediaStream) {
+    callMediaStream.getAudioTracks().forEach(track => {
+      track.enabled = enabled;
+    });
+  }
 }
 
 function stopCallMic() {
