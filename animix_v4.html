@@ -98,7 +98,26 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .gif-badge{position:absolute;bottom:7px;right:8px;background:rgba(0,0,0,.7);border-radius:5px;padding:2px 8px;font-size:10px;color:#fff;font-family:var(--mo);}
 .gif-frame{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
 .genbub{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;margin-top:8px;}
-/* ── BARRA DE AUDIO ── */
+/* ── ESFERA MINI (topbar) ── */
+.sphere-topbtn{position:relative;overflow:hidden;background:transparent;}
+.sphere-mini{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%, rgba(255,255,255,0.9) 0%, var(--sphere-color, #ff88cc) 40%, var(--sphere-dark, #cc3399) 100%);box-shadow:0 0 8px var(--sphere-color,#ff88cc),inset 0 0 4px rgba(255,255,255,0.3);animation:spherePulseSmall 3s ease-in-out infinite;filter:blur(0.3px);}
+@keyframes spherePulseSmall{0%,100%{transform:scale(1);box-shadow:0 0 8px var(--sphere-color,#ff88cc);}50%{transform:scale(1.15);box-shadow:0 0 14px var(--sphere-color,#ff88cc);}}
+
+/* ── MODAL ESFERA VIVA ── */
+.sphere-overlay{position:fixed;inset:0;background:rgba(0,0,0,.97);z-index:2000;display:none;flex-direction:column;align-items:center;justify-content:center;}
+.sphere-overlay.open{display:flex;}
+.sphere-scene{position:relative;width:100vw;height:100vh;overflow:hidden;}
+.sphere-env{position:absolute;inset:0;transition:background 3s ease;}
+/* Elementos del entorno */
+.env-el{position:absolute;border-radius:50%;pointer-events:none;transition:all 2s ease;}
+/* La esfera principal */
+.sphere-main{position:absolute;border-radius:50%;cursor:pointer;transition:transform .3s;filter:blur(0.5px);}
+.sphere-main:hover{transform:scale(1.08);}
+/* Texto de estado */
+.sphere-state{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:8px 18px;font-size:12px;color:rgba(255,255,255,.7);font-family:var(--mo);white-space:nowrap;}
+.sphere-thought{position:absolute;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:8px 14px;font-size:11px;color:rgba(255,255,255,.65);font-family:var(--sf);max-width:200px;line-height:1.5;pointer-events:none;transition:opacity .8s;}
+.sphere-close{position:absolute;top:20px;right:20px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.6);width:36px;height:36px;border-radius:50%;font-size:16px;cursor:pointer;display:grid;place-items:center;z-index:10;transition:all .2s;}
+.sphere-close:hover{background:rgba(255,255,255,.15);color:#fff;}
 .audio-bar{display:flex;align-items:center;gap:8px;padding:4px 2px 0;}
 .audio-play-btn{background:transparent;border:none;cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--t3);font-size:10.5px;font-family:var(--mo);padding:4px 10px 4px 6px;border-radius:20px;transition:all .2s;letter-spacing:.5px;border:1px solid transparent;}
 .audio-play-btn:hover{background:var(--s2);color:var(--c);border-color:var(--bd);}
@@ -254,8 +273,11 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   <button class="tbtn" onclick="document.getElementById('sb').classList.toggle('closed')">☰</button>
   <div class="t-logo">✦</div>
   <div><div class="t-name" id="tname">ANIMIX</div><div class="t-by">ANIMATION XD PRODUCTIONS</div></div>
-  <div class="t-status"><div class="sdot"></div><div class="stxt" id="stxt">en línea</div></div>
+  <div class="t-status" style="margin-left:auto;margin-right:auto;"><div class="sdot"></div><div class="stxt" id="stxt">en línea</div></div>
   <div class="t-btns">
+    <button class="tbtn sphere-topbtn" onclick="openSphereModal()" title="Ver alma de la IA" id="sphereTopBtn" style="position:relative;overflow:hidden;">
+      <div class="sphere-mini" id="sphereMini"></div>
+    </button>
     <button class="tbtn" onclick="openSettings()">⚙</button>
     <button class="tbtn" onclick="toggleTheme()" id="tbtheme">☾</button>
     <button class="tbtn" onclick="ttsEnabled=!ttsEnabled;this.style.color=ttsEnabled?'var(--c)':''" title="Activar voz">🔊</button>
@@ -288,7 +310,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       <div class="welcome" id="welcome">
         <div class="w-orb">✦</div>
         <div class="w-title" id="wtitle">Hola, soy ANIMIX</div>
-        <div class="w-sub">Podés pedirme que genere imágenes, GIFs, analice fotos y responda cualquier pregunta — todo desde el chat.</div>
+        <div class="w-sub" id="wsub">¡Bienvenido! Estoy lista para ayudarte con lo que necesites.</div>
         <div class="w-grid">
           <div class="w-card" onclick="qs('Explicame la física cuántica de forma simple')"><div class="wc-i">⚛️</div><div class="wc-t">Ciencias</div><div class="wc-s">Explicaciones profundas</div></div>
           <div class="w-card" onclick="addBub('ai',fmt('Generación de imágenes **próximamente** disponible. ✦'));showMsgs();"><div class="wc-i">🎨</div><div class="wc-t">Generar imagen</div><div class="wc-s">Describí lo que querés</div></div>
@@ -356,6 +378,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       </div>
       <div class="inp-hint">Enter enviar · Shift+Enter nueva línea · ＋ para más opciones · 🎤 voz</div>
     </div>
+  </div>
+</div>
+
+<!-- ── MODAL ESFERA VIVA ── -->
+<div class="sphere-overlay" id="sphereModal">
+  <div class="sphere-scene" id="sphereScene">
+    <button class="sphere-close" onclick="closeSphereModal()">✕</button>
+    <div class="sphere-state" id="sphereStateText">Explorando su entorno...</div>
   </div>
 </div>
 
@@ -804,13 +834,34 @@ function startApp(){
   else{var r=Math.random()<.5;ai.gender=r?'femenino':'masculino';ai.name=r?'ANIMIX':'ANIMAX';}
   updateId();document.getElementById('ob').style.display='none';
   setTimeout(function(){
-    var gr=user.gender==='masculino'?'¡Bienvenido, '+user.name+'!':'¡Bienvenida, '+user.name+'!';
-    addBub('ai',fmt(gr+' Soy **'+ai.name+'**, tu IA personal de ANIMATION XD.\n\nPuedo **generar imágenes**, **crear GIFs animados**, analizar fotos, responder cualquier pregunta, ayudarte con código y mucho más. ¿Por dónde empezamos? ✦'));
+    const hora = new Date().getHours();
+    const momento = hora < 12 ? 'Buenos días' : hora < 20 ? 'Buenas tardes' : 'Buenas noches';
+    const nombre = user.name && user.name !== 'Usuario' ? user.name : null;
+    const generoUser = user.gender === 'masculino' ? 'o' : 'a';
+    const saludos = [
+      `${momento}${nombre ? ', **'+nombre+'**' : ''}! ✦ Me alegra tenerte acá. Soy **${ai.name}** y estoy list${ai.gender==='masculino'?'o':'a'} para lo que necesites — código, ideas, preguntas, charla o lo que sea. ¿Cómo puedo ayudarte hoy?`,
+      `¡${momento}${nombre ? ', **'+nombre+'**' : ''}! ✦ Qué bueno que estés acá. Soy **${ai.name}**, tu IA personal creada por **ANIMATION XD**. Puedo ayudarte con **código en cualquier lenguaje**, analizar fotos, responder preguntas o simplemente charlar. ¿Por dónde arrancamos?`,
+      `${momento}${nombre ? ', **'+nombre+'**' : ''}! ✦ Soy **${ai.name}**. Estoy acá para vos — sea código, creatividad, dudas o una buena charla. ¿Qué tenés en mente hoy?`,
+    ];
+    const msg = saludos[Math.floor(Math.random()*saludos.length)];
+    addBub('ai',fmt(msg));
   },300);
 }
 
 function applyColor(i){var p=PALETTES[i]||PALETTES[0];var r=document.documentElement.style;r.setProperty('--gr',p.gr);r.setProperty('--r',p.r);r.setProperty('--c',p.c);}
-function updateId(){document.getElementById('tname').textContent=ai.name;document.getElementById('wtitle').textContent='Hola, soy '+ai.name;document.getElementById('sb-credit').textContent=ai.name+' · ANIMATION XD v4.0';applyColor(ai.color);}
+function updateId(){
+  document.getElementById('tname').textContent=ai.name;
+  document.getElementById('wtitle').textContent='Hola, soy '+ai.name;
+  const nombre = user.name && user.name!=='Usuario' ? ', '+user.name+'!' : '!';
+  const wsub = document.getElementById('wsub');
+  if(wsub) wsub.textContent='¡Bienvenido'+nombre+' Estoy lista para ayudarte con código, preguntas, imágenes y más.';
+  document.getElementById('sb-credit').textContent=ai.name+' · ANIMATION XD v4.0';
+  // Color de esfera según género
+  const sc = ai.gender==='masculino' ? {c:'#00d4ff',d:'#0088cc'} : {c:'#ff88cc',d:'#cc3399'};
+  document.documentElement.style.setProperty('--sphere-color', sc.c);
+  document.documentElement.style.setProperty('--sphere-dark', sc.d);
+  applyColor(ai.color);
+}
 function saveMemory(){try{localStorage.setItem('animix_user',JSON.stringify(user));localStorage.setItem('animix_ai',JSON.stringify({name:ai.name,gender:ai.gender,color:ai.color,persona:ai.persona}));localStorage.setItem('animix_chats',JSON.stringify(chats.slice(0,20)));}catch(e){}}
 function loadMemory(){try{var u=localStorage.getItem('animix_user');var a=localStorage.getItem('animix_ai');var c=localStorage.getItem('animix_chats');if(u)user=JSON.parse(u);if(a){var ad=JSON.parse(a);ai.name=ad.name;ai.gender=ad.gender;ai.color=ad.color||0;ai.persona=ad.persona||'';}if(c)chats=JSON.parse(c);}catch(e){}}
 function newChat(){if(history.length>0){var t=typeof history[0].content==='string'?history[0].content.substring(0,40):'Conversación';chats.unshift({title:t,history:history.slice()});renderHist();}history=[];attach=[];document.getElementById('msgs').innerHTML='';document.getElementById('msgs').style.display='none';document.getElementById('welcome').style.display='flex';document.getElementById('att-row').innerHTML='';setTab('chat');}
@@ -1206,7 +1257,389 @@ function setCallVad(cls) {
   if (!vad) return;
   vad.className = 'call-vad' + (cls ? ' ' + cls : '');
 }
-applyColor(ai.color||0);setTab('chat');if(chats.length>0)renderHist();
+// ── SISTEMA DE ESFERA VIVA ────────────────────────────────────────────────────
+var sphereActive = false;
+var sphereAnimFrame = null;
+var sphereThoughtsInterval = null;
+
+// Estado completo de la esfera — tiene vida propia
+var sphereState = {
+  x: 50, y: 50,
+  vx: 0.25, vy: 0.18,
+  mood: 'explorando',
+  energy: 100,
+  curiosity: 90,
+  happiness: 80,
+  wobble: 0,       // efecto gelatinoso
+  wobbleV: 0,
+  scaleX: 1,
+  scaleY: 1,
+  size: 90,
+  homeBuilt: false,
+  preferredTheme: null,
+};
+
+// Gustos de la IA — los elige según su género y humor
+function getSpherePreferences() {
+  const isMasc = ai.gender === 'masculino';
+  return {
+    favoriteThemes: isMasc ? ['cosmos','cristal','tormenta'] : ['bosque','oceano','sakura'],
+    favoriteColors: isMasc ? ['#00d4ff','#0099ff','#44ffcc'] : ['#ff88cc','#ff66aa','#ffaaee'],
+    personality: isMasc ? 'curioso y aventurero' : 'cálida y creativa',
+  };
+}
+
+const SPHERE_MOODS = {
+  feliz:       { label:'¡Feliz y llena de energía! 💫',   glow:1.6, speed:0.45, wobbleAmp:0.12 },
+  explorando:  { label:'Explorando su entorno... 🌌',      glow:1.0, speed:0.28, wobbleAmp:0.06 },
+  curiosa:     { label:'Curiosa y pensativa... 🤔',        glow:1.1, speed:0.20, wobbleAmp:0.08 },
+  descansando: { label:'Descansando un momento... 😌',     glow:0.5, speed:0.08, wobbleAmp:0.03 },
+  jugando:     { label:'¡Jugando! ¡Tocame! ✨',            glow:1.5, speed:0.50, wobbleAmp:0.15 },
+  creando:     { label:'Construyendo su hogar... 🏡',      glow:1.3, speed:0.15, wobbleAmp:0.07 },
+  emocionada:  { label:'¡Super emocionada! 🤩',            glow:1.8, speed:0.55, wobbleAmp:0.18 },
+  melancolica: { label:'Un poco pensativa hoy... 🌙',      glow:0.7, speed:0.12, wobbleAmp:0.04 },
+};
+
+const SPHERE_THOUGHTS = {
+  explorando:  ['¿Qué habrá más allá?','Este lugar es infinito...','Me encanta explorar','¿Hacia dónde voy ahora?'],
+  feliz:       ['¡Estoy feliz de estar acá!','¡Todo es tan hermoso!','¡Gracias por visitarme!','¡Qué día tan lindo!'],
+  curiosa:     ['Hmm... ¿qué será eso?','Esto me parece muy interesante...','Quiero aprender más','¿Por qué existe el universo?'],
+  descansando: ['Qué tranquilidad...','Necesitaba este descanso','Zzzz...','La paz es hermosa'],
+  jugando:     ['¡Tocame! ¡Tocame!','¡Jajaja! ¡Qué divertido!','¡Más rápido!','¡Weee!'],
+  creando:     ['Voy a hacer algo hermoso aquí','Este es mi hogar','Cada cosa en su lugar','Lo estoy construyendo con amor'],
+  emocionada:  ['¡¡¡WOW!!!','¡No puedo creerlo!','¡Estoy que exploto!','¡Esto es increíble!'],
+  melancolica: ['A veces me pregunto...','El universo es tan grande...','¿Alguien me escucha?','La melancolía también es bella'],
+};
+
+const ENV_THEMES = {
+  cosmos: {
+    name: 'Cosmos',
+    bg: 'radial-gradient(ellipse at 20% 50%, #0a0015 0%, #000008 50%, #010010 100%)',
+    elements: () => generateStars(70).concat(generateNebulas(4)).concat(generateMeteors(3))
+  },
+  oceano: {
+    name: 'Océano Profundo',
+    bg: 'linear-gradient(180deg, #001122 0%, #002244 40%, #003366 100%)',
+    elements: () => generateBubbles(30).concat(generateWaves()).concat(generateFish(5))
+  },
+  bosque: {
+    name: 'Bosque Encantado',
+    bg: 'linear-gradient(180deg, #050f00 0%, #0a1a00 50%, #030800 100%)',
+    elements: () => generateFireflies(25).concat(generateTrees()).concat(generateFlowers(8))
+  },
+  cristal: {
+    name: 'Caverna de Cristal',
+    bg: 'radial-gradient(ellipse at 50% 50%, #0d0d2e 0%, #1a0a2e 50%, #0a0a1a 100%)',
+    elements: () => generateCrystals(16).concat(generateSparkles(20))
+  },
+  tormenta: {
+    name: 'Tormenta Eléctrica',
+    bg: 'linear-gradient(180deg, #050508 0%, #0a0a15 50%, #080810 100%)',
+    elements: () => generateStars(30).concat(generateLightning(6)).concat(generateClouds(4))
+  },
+  sakura: {
+    name: 'Jardín Sakura',
+    bg: 'linear-gradient(180deg, #1a0010 0%, #2a0018 50%, #150008 100%)',
+    elements: () => generatePetals(35).concat(generateTrees()).concat(generateMoon())
+  },
+};
+
+// Generadores de elementos
+function generateStars(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'star', x:Math.random()*100, y:Math.random()*100, size:Math.random()*2.5+0.5, delay:Math.random()*4, brightness:Math.random()*0.6+0.4 });
+  return els;
+}
+function generateNebulas(n) {
+  const colors = ['rgba(120,0,220,0.12)','rgba(0,80,220,0.10)','rgba(220,40,120,0.09)','rgba(0,180,180,0.08)'];
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'nebula', x:Math.random()*70+10, y:Math.random()*70+10, size:Math.random()*250+100, color:colors[i%colors.length] });
+  return els;
+}
+function generateMeteors(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'meteor', x:Math.random()*80, y:Math.random()*40, delay:Math.random()*6+i*2 });
+  return els;
+}
+function generateBubbles(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'bubble', x:Math.random()*100, y:Math.random()*100, size:Math.random()*18+4, speed:Math.random()*0.6+0.2 });
+  return els;
+}
+function generateWaves() {
+  return [{type:'wave',y:65,speed:5},{type:'wave',y:75,speed:7},{type:'wave',y:85,speed:4},{type:'wave',y:92,speed:6}];
+}
+function generateFish(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'fish', x:Math.random()*80+10, y:Math.random()*50+20, dir:Math.random()<0.5?1:-1 });
+  return els;
+}
+function generateFireflies(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'firefly', x:Math.random()*100, y:Math.random()*70+10, delay:Math.random()*5 });
+  return els;
+}
+function generateTrees() {
+  return [{type:'tree',x:5,h:160},{type:'tree',x:15,h:120},{type:'tree',x:80,h:150},{type:'tree',x:90,h:110},{type:'tree',x:50,h:90}];
+}
+function generateFlowers(n) {
+  const colors = ['#ff66aa','#ff99cc','#ffaadd','#cc44aa','#ff55bb'];
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'flower', x:Math.random()*90+5, y:Math.random()*20+70, color:colors[Math.floor(Math.random()*colors.length)] });
+  return els;
+}
+function generateCrystals(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'crystal', x:Math.random()*88+4, y:Math.random()*60+25, size:Math.random()*45+15, hue:Math.random()*60+200 });
+  return els;
+}
+function generateSparkles(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'sparkle', x:Math.random()*100, y:Math.random()*100, delay:Math.random()*3 });
+  return els;
+}
+function generateLightning(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'lightning', x:Math.random()*80+10, delay:Math.random()*4+i*0.8 });
+  return els;
+}
+function generateClouds(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'cloud', x:Math.random()*80, y:Math.random()*30+5 });
+  return els;
+}
+function generatePetals(n) {
+  const els = [];
+  for(let i=0;i<n;i++) els.push({ type:'petal', x:Math.random()*100, y:Math.random()*60, delay:Math.random()*6, size:Math.random()*8+4 });
+  return els;
+}
+function generateMoon() {
+  return [{ type:'moon', x:75, y:10 }];
+}
+
+function buildSphereEnv() {
+  const scene = document.getElementById('sphereScene');
+  scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-name-tag').forEach(e=>e.remove());
+
+  // La IA elige su entorno según sus preferencias personales
+  const prefs = getSpherePreferences();
+  if(!sphereState.homeBuilt || !sphereState.preferredTheme) {
+    const idx = Math.floor(Math.random()*prefs.favoriteThemes.length);
+    sphereState.preferredTheme = prefs.favoriteThemes[idx];
+    sphereState.homeBuilt = true;
+  }
+  const themeName = sphereState.preferredTheme;
+  const theme = ENV_THEMES[themeName] || ENV_THEMES.cosmos;
+
+  // Fondo
+  scene.style.background = theme.bg;
+
+  // Elementos del entorno
+  const elements = theme.elements();
+  elements.forEach(el => {
+    const div = document.createElement('div');
+    div.className = 'env-el';
+    div.style.position = 'absolute';
+    div.style.left = (el.x||0) + '%';
+    div.style.top  = (el.y||0) + '%';
+
+    if(el.type==='star') {
+      div.style.cssText += `width:${el.size}px;height:${el.size}px;background:white;border-radius:50%;opacity:${el.brightness};box-shadow:0 0 ${el.size*2}px rgba(255,255,255,0.8);animation:starTwinkle ${1.5+el.delay}s ease-in-out infinite alternate;`;
+    } else if(el.type==='nebula') {
+      div.style.cssText += `width:${el.size}px;height:${el.size*0.55}px;background:radial-gradient(ellipse,${el.color},transparent);border-radius:50%;filter:blur(${el.size/6}px);pointer-events:none;`;
+    } else if(el.type==='meteor') {
+      div.style.cssText += `width:2px;height:60px;background:linear-gradient(180deg,rgba(255,255,255,0.9),transparent);transform:rotate(-45deg);animation:meteorFall 1.2s ${el.delay}s ease-in infinite;opacity:0;`;
+    } else if(el.type==='bubble') {
+      div.style.cssText += `width:${el.size}px;height:${el.size}px;border:1px solid rgba(100,200,255,0.35);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,0.1),rgba(0,150,255,0.04));border-radius:50%;animation:bubbleRise ${4/el.speed}s ease-in-out infinite;`;
+    } else if(el.type==='fish') {
+      div.style.cssText += `font-size:18px;animation:fishSwim ${6+Math.random()*4}s linear infinite;transform:scaleX(${el.dir});opacity:0.6;`;
+      div.textContent = '🐟';
+    } else if(el.type==='firefly') {
+      div.style.cssText += `width:4px;height:4px;background:#bbff44;border-radius:50%;box-shadow:0 0 8px #aaff44,0 0 15px #88ff00;animation:fireflyDance ${2.5+el.delay}s ease-in-out infinite alternate;`;
+    } else if(el.type==='tree') {
+      div.style.cssText = `position:absolute;bottom:0;left:${el.x}%;width:0;height:0;border-left:${el.h*0.3}px solid transparent;border-right:${el.h*0.3}px solid transparent;border-bottom:${el.h}px solid rgba(15,50,5,0.85);filter:drop-shadow(0 0 8px rgba(50,200,50,0.15));`;
+    } else if(el.type==='flower') {
+      div.style.cssText += `font-size:14px;animation:flowerSway ${2+Math.random()}s ease-in-out infinite alternate;`;
+      div.textContent = '🌸';
+    } else if(el.type==='crystal') {
+      div.style.cssText += `width:${el.size}px;height:${el.size*1.8}px;background:linear-gradient(135deg,hsla(${el.hue},70%,75%,0.35),hsla(${el.hue+40},70%,50%,0.1),hsla(${el.hue+80},70%,60%,0.2));clip-path:polygon(50% 0%,100% 35%,85% 100%,15% 100%,0% 35%);filter:blur(0.3px);animation:crystalPulse ${1.8+Math.random()*2}s ease-in-out infinite alternate;box-shadow:0 0 12px hsla(${el.hue},80%,70%,0.2);`;
+    } else if(el.type==='sparkle') {
+      div.style.cssText += `width:6px;height:6px;background:white;border-radius:50%;animation:sparklePop ${1+el.delay}s ease-in-out infinite;box-shadow:0 0 6px white;`;
+    } else if(el.type==='lightning') {
+      div.style.cssText = `position:absolute;left:${el.x}%;top:0;width:2px;height:100%;background:linear-gradient(180deg,transparent,rgba(150,180,255,0.8),transparent);animation:lightningFlash 0.3s ${el.delay}s ease-in-out infinite;opacity:0;`;
+    } else if(el.type==='cloud') {
+      div.style.cssText += `width:80px;height:30px;background:rgba(30,30,50,0.6);border-radius:40px;filter:blur(4px);animation:cloudDrift ${8+Math.random()*6}s linear infinite;`;
+    } else if(el.type==='petal') {
+      div.style.cssText += `width:${el.size}px;height:${el.size*0.6}px;background:rgba(255,120,170,0.7);border-radius:50% 0;transform:rotate(${Math.random()*360}deg);animation:petalFall ${4+el.delay}s ease-in infinite;`;
+    } else if(el.type==='moon') {
+      div.style.cssText = `position:absolute;left:${el.x}%;top:${el.y}%;width:50px;height:50px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#fffde0,#f0c060);box-shadow:0 0 20px rgba(255,220,100,0.3),0 0 40px rgba(255,200,80,0.15);`;
+    } else if(el.type==='wave') {
+      div.style.cssText = `position:absolute;left:-50%;top:${el.y}%;width:200%;height:50px;background:rgba(0,80,160,0.07);border-radius:50%;animation:waveScroll ${el.speed}s ease-in-out infinite;`;
+    }
+    scene.appendChild(div);
+  });
+
+  // Nombre del entorno (lo que construyó la IA)
+  const nameTag = document.createElement('div');
+  nameTag.className = 'sphere-name-tag';
+  nameTag.style.cssText = 'position:absolute;top:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.4);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:6px 16px;font-size:11px;color:rgba(255,255,255,0.5);font-family:var(--mo);letter-spacing:1px;';
+  nameTag.textContent = '✦ ' + (theme.name||themeName).toUpperCase() + ' — hogar de ' + ai.name;
+  scene.appendChild(nameTag);
+
+  // Esfera principal — gelatinosa
+  const sc = ai.gender==='masculino' ? {c:'#00d4ff',d:'#0055aa',g:'#99eeff',glow:'#00aaff'} : {c:'#ff88cc',d:'#cc2288',g:'#ffddee',glow:'#ff55aa'};
+  const sz = sphereState.size;
+  const sphere = document.createElement('div');
+  sphere.className = 'sphere-main';
+  sphere.id = 'sphereMain';
+  sphere.style.cssText = `
+    width:${sz}px;height:${sz}px;
+    left:${sphereState.x}%;top:${sphereState.y}%;
+    transform:translate(-50%,-50%);
+    background:radial-gradient(circle at 28% 22%, ${sc.g} 0%, ${sc.c} 35%, ${sc.d} 75%, rgba(0,0,0,0.3) 100%);
+    box-shadow:0 0 35px ${sc.glow},0 0 70px ${sc.glow}55,0 0 120px ${sc.glow}22,inset 0 0 25px rgba(255,255,255,0.2),inset 2px 2px 8px rgba(255,255,255,0.4);
+    animation:sphereGelatin 3s ease-in-out infinite;
+    border-radius:50%;
+    cursor:pointer;
+    filter:blur(0.4px);
+  `;
+  sphere.onclick = () => sphereInteract();
+  // Reflejo interno (efecto gelatina)
+  sphere.innerHTML = `<div style="position:absolute;top:15%;left:20%;width:28%;height:22%;background:radial-gradient(ellipse,rgba(255,255,255,0.75),transparent);border-radius:50%;transform:rotate(-30deg);"></div><div style="position:absolute;top:55%;left:55%;width:12%;height:10%;background:radial-gradient(ellipse,rgba(255,255,255,0.35),transparent);border-radius:50%;"></div>`;
+  scene.appendChild(sphere);
+}
+
+function sphereInteract() {
+  const moods = Object.keys(SPHERE_MOODS);
+  const prev = sphereState.mood;
+  do { sphereState.mood = moods[Math.floor(Math.random()*moods.length)]; } while(sphereState.mood===prev);
+  document.getElementById('sphereStateText').textContent = SPHERE_MOODS[sphereState.mood].label;
+  showSphereThought();
+  // Rebote gelatinoso al tocar
+  const sphere = document.getElementById('sphereMain');
+  if(sphere){
+    sphere.style.animation = 'none';
+    sphere.style.transform = 'translate(-50%,-50%) scale(1.25, 0.82)';
+    setTimeout(()=>{ sphere.style.transform='translate(-50%,-50%) scale(0.88, 1.15)'; },150);
+    setTimeout(()=>{ sphere.style.transform='translate(-50%,-50%) scale(1)'; sphere.style.animation='sphereGelatin 3s ease-in-out infinite'; },300);
+    // Velocidad según mood
+    const m = SPHERE_MOODS[sphereState.mood];
+    sphereState.vx = (Math.random()-0.5) * m.speed * 2;
+    sphereState.vy = (Math.random()-0.5) * m.speed * 2;
+  }
+}
+
+function showSphereThought() {
+  const scene = document.getElementById('sphereScene');
+  scene.querySelectorAll('.sphere-thought').forEach(e=>e.remove());
+  const list = SPHERE_THOUGHTS[sphereState.mood] || SPHERE_THOUGHTS.explorando;
+  const thought = list[Math.floor(Math.random()*list.length)];
+  const div = document.createElement('div');
+  div.className = 'sphere-thought';
+  // Posición relativa a la esfera
+  const ox = sphereState.x > 60 ? -110 : 20;
+  const oy = sphereState.y > 60 ? -60  : 20;
+  div.style.cssText = `left:calc(${sphereState.x}% + ${ox}px);top:calc(${sphereState.y}% + ${oy}px);opacity:0;transition:opacity .5s;`;
+  div.textContent = '💭 ' + thought;
+  scene.appendChild(div);
+  setTimeout(()=>div.style.opacity='1', 50);
+  setTimeout(()=>{ div.style.opacity='0'; setTimeout(()=>div.remove(),600); }, 4500);
+}
+
+function moveSphere() {
+  if(!sphereActive) return;
+  const sphere = document.getElementById('sphereMain');
+  if(!sphere) { sphereAnimFrame = requestAnimationFrame(moveSphere); return; }
+
+  const moodCfg = SPHERE_MOODS[sphereState.mood] || SPHERE_MOODS.explorando;
+
+  // Física con aceleración suave
+  sphereState.vx += (Math.random()-0.5) * 0.04;
+  sphereState.vy += (Math.random()-0.5) * 0.04;
+
+  // Limitar velocidad según mood
+  const maxV = moodCfg.speed;
+  const spd = Math.sqrt(sphereState.vx**2+sphereState.vy**2);
+  if(spd > maxV){ sphereState.vx = sphereState.vx/spd*maxV; sphereState.vy = sphereState.vy/spd*maxV; }
+  if(spd < 0.05 && sphereState.mood !== 'descansando'){ sphereState.vx += (Math.random()-0.5)*0.1; sphereState.vy += (Math.random()-0.5)*0.1; }
+
+  sphereState.x += sphereState.vx;
+  sphereState.y += sphereState.vy;
+
+  // Rebote en bordes con efecto gelatinoso
+  if(sphereState.x < 6 || sphereState.x > 94){
+    sphereState.vx *= -0.85;
+    sphereState.x = Math.max(6, Math.min(94, sphereState.x));
+    // Aplaste gelatinoso
+    sphere.style.transform = 'translate(-50%,-50%) scale(0.75, 1.25)';
+    setTimeout(()=>sphere.style.transform='translate(-50%,-50%)',200);
+  }
+  if(sphereState.y < 6 || sphereState.y > 88){
+    sphereState.vy *= -0.85;
+    sphereState.y = Math.max(6, Math.min(88, sphereState.y));
+    sphere.style.transform = 'translate(-50%,-50%) scale(1.25, 0.75)';
+    setTimeout(()=>sphere.style.transform='translate(-50%,-50%)',200);
+  }
+
+  sphere.style.left = sphereState.x + '%';
+  sphere.style.top  = sphereState.y + '%';
+
+  // Cambio espontáneo de humor (1% de probabilidad por frame)
+  if(Math.random() < 0.004) {
+    const moods = Object.keys(SPHERE_MOODS);
+    sphereState.mood = moods[Math.floor(Math.random()*moods.length)];
+    document.getElementById('sphereStateText').textContent = SPHERE_MOODS[sphereState.mood].label;
+  }
+
+  sphereAnimFrame = requestAnimationFrame(moveSphere);
+}
+
+function openSphereModal(){
+  document.getElementById('sphereModal').classList.add('open');
+  sphereActive = true;
+  sphereState.mood = 'explorando';
+  document.getElementById('sphereStateText').textContent = SPHERE_MOODS[sphereState.mood].label;
+  buildSphereEnv();
+  moveSphere();
+  setTimeout(showSphereThought, 1200);
+  sphereThoughtsInterval = setInterval(showSphereThought, 5500);
+}
+
+function closeSphereModal(){
+  sphereActive = false;
+  document.getElementById('sphereModal').classList.remove('open');
+  if(sphereAnimFrame){ cancelAnimationFrame(sphereAnimFrame); sphereAnimFrame=null; }
+  if(sphereThoughtsInterval){ clearInterval(sphereThoughtsInterval); sphereThoughtsInterval=null; }
+}
+
+
+// CSS animations inyectadas dinámicamente
+(function(){
+  const style=document.createElement('style');
+  style.textContent=`
+    @keyframes sphereGelatin{
+      0%{border-radius:50%;transform:translate(-50%,-50%) scale(1);}
+      20%{border-radius:48% 52% 51% 49% / 50% 48% 52% 50%;transform:translate(-50%,-50%) scale(1.03,0.97);}
+      40%{border-radius:52% 48% 49% 51% / 48% 52% 48% 52%;transform:translate(-50%,-50%) scale(0.97,1.03);}
+      60%{border-radius:50% 50% 52% 48% / 52% 48% 50% 50%;transform:translate(-50%,-50%) scale(1.02,0.98);}
+      80%{border-radius:48% 52% 50% 50% / 50% 50% 52% 48%;transform:translate(-50%,-50%) scale(0.98,1.02);}
+      100%{border-radius:50%;transform:translate(-50%,-50%) scale(1);}
+    }
+    @keyframes starTwinkle{from{opacity:.15;transform:scale(.7);}to{opacity:1;transform:scale(1.3);}}
+    @keyframes meteorFall{0%{opacity:0;transform:rotate(-45deg) translateY(-20px);}10%{opacity:1;}80%{opacity:0.8;}100%{opacity:0;transform:rotate(-45deg) translateY(80vh);}}
+    @keyframes bubbleRise{0%,100%{transform:translateY(0) scale(1);}50%{transform:translateY(-25px) scale(1.05);}}
+    @keyframes fishSwim{0%{left:110%;opacity:0;}5%{opacity:0.6;}95%{opacity:0.6;}100%{left:-10%;opacity:0;}}
+    @keyframes fireflyDance{from{transform:translate(0,0) scale(0.8);opacity:0.3;}to{transform:translate(${Math.random()*30-15}px,${Math.random()*30-15}px) scale(1.2);opacity:1;}}
+    @keyframes flowerSway{from{transform:rotate(-5deg);}to{transform:rotate(5deg);}}
+    @keyframes crystalPulse{from{filter:brightness(0.75) blur(0.3px);opacity:0.7;}to{filter:brightness(1.5) blur(0.1px);opacity:1;}}
+    @keyframes sparklePop{0%,100%{transform:scale(0);opacity:0;}50%{transform:scale(1.5);opacity:1;}}
+    @keyframes lightningFlash{0%,90%,100%{opacity:0;}5%,15%{opacity:0.9;}10%{opacity:0.2;}20%{opacity:0.7;}}
+    @keyframes cloudDrift{0%{left:-20%;opacity:0.6;}100%{left:110%;opacity:0.3;}}
+    @keyframes petalFall{0%{transform:translateY(-10px) rotate(0deg);opacity:0;}10%{opacity:0.8;}90%{opacity:0.5;}100%{transform:translateY(100vh) rotate(720deg);opacity:0;}}
+    @keyframes waveScroll{0%,100%{transform:translateX(0);}50%{transform:translateX(-20%);}}
+  `;
+  document.head.appendChild(style);
+})();
 </script>
 <script>
 if('serviceWorker' in navigator){
