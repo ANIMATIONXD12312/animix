@@ -106,7 +106,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* ── MODAL ESFERA VIVA ── */
 .sphere-overlay{position:fixed;inset:0;background:rgba(0,0,0,.97);z-index:2000;display:none;flex-direction:column;align-items:center;justify-content:center;}
 /* ── DIARIO MODAL ── */
-.diary-modal{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:3000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(12px);}
+.diary-modal{position:absolute;inset:0;background:rgba(0,0,0,.88);z-index:3000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(12px);border-radius:inherit;}
 .diary-modal.open{display:flex;}
 .diary-inner{background:#13120e;border:1px solid rgba(255,200,100,0.2);border-radius:18px;width:90%;max-width:500px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 40px rgba(255,180,50,0.15);}
 .diary-header{padding:14px 18px;border-bottom:1px solid rgba(255,200,100,0.1);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
@@ -404,22 +404,6 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 </div>
 
 <!-- ── MODAL LLAMADA DE VOZ ── -->
-<!-- ── MODAL DIARIO ── -->
-<div class="diary-modal" id="diaryModal">
-  <div class="diary-inner">
-    <div class="diary-header">
-      <div>
-        <div class="diary-title">📓 Diario de <span id="diaryAiName">ANIMIX</span></div>
-        <div class="diary-subtitle" id="diarySubtitle">0 entradas</div>
-      </div>
-      <button class="diary-close" onclick="closeDiaryModal()">✕</button>
-    </div>
-    <div class="diary-entries" id="diaryEntries">
-      <div class="diary-empty">La IA todavía no escribió nada...<br>Esperá a que sienta algo fuerte.</div>
-    </div>
-  </div>
-</div>
-
 <div class="call-overlay" id="callModal">
   <div class="call-box">
     <button onclick="closeCallModal()" style="position:absolute;top:14px;right:16px;background:transparent;border:none;color:var(--t2);font-size:18px;cursor:pointer;">✕</button>
@@ -2699,43 +2683,57 @@ Escribí una entrada de diario. 2-4 oraciones máximo. En primera persona. Como 
 }
 
 function openDiaryModal() {
-  const modal = document.getElementById('diaryModal');
-  if(!modal) return;
-  modal.classList.add('open');
+  // El modal se crea DENTRO del entorno de la esfera
+  const scene = document.getElementById('sphereScene');
+  if(!scene) return;
 
-  document.getElementById('diaryAiName').textContent = ai.name;
+  // Eliminar modal anterior si existe
+  const old = document.getElementById('diaryModal');
+  if(old) old.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'diaryModal';
+  modal.className = 'diary-modal';
+  modal.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,0.88);z-index:3000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px);';
+
   const entries = mind.diary || [];
-  document.getElementById('diarySubtitle').textContent =
-    entries.length === 0 ? 'sin entradas todavía' :
-    entries.length === 1 ? '1 entrada' :
-    `${entries.length} entradas`;
+  const countText = entries.length === 0 ? 'sin entradas todavía' :
+    entries.length === 1 ? '1 entrada' : `${entries.length} entradas`;
 
-  const container = document.getElementById('diaryEntries');
-  if(entries.length === 0) {
-    container.innerHTML = '<div class="diary-empty">La IA todavía no escribió nada...<br>Aparecerá cuando sienta algo muy fuerte.</div>';
-    return;
+  let entriesHTML = `<div class="diary-empty">La IA todavía no escribió nada...<br>Aparecerá cuando sienta algo muy fuerte.</div>`;
+  if(entries.length > 0) {
+    entriesHTML = [...entries].reverse().map(entry => {
+      const date = new Date(entry.time);
+      const dateStr = date.toLocaleDateString('es-AR', {weekday:'short',day:'numeric',month:'short'});
+      const timeStr = date.toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+      return `<div class="diary-entry">
+        <div class="diary-entry-date">${dateStr} · ${timeStr}</div>
+        <div class="diary-entry-mood">${entry.emotion} · ${entry.intensity}%</div>
+        <div class="diary-entry-text">${entry.text}</div>
+      </div>`;
+    }).join('');
   }
 
-  container.innerHTML = '';
-  // Mostrar en orden inverso (más reciente primero)
-  [...entries].reverse().forEach((entry, i) => {
-    const date = new Date(entry.time);
-    const dateStr = date.toLocaleDateString('es-AR', { weekday:'short', day:'numeric', month:'short' });
-    const timeStr = date.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
-    const div = document.createElement('div');
-    div.className = 'diary-entry';
-    div.innerHTML = `
-      <div class="diary-entry-date">${dateStr} · ${timeStr}</div>
-      <div class="diary-entry-mood">${entry.emotion} · ${entry.intensity}%</div>
-      <div class="diary-entry-text">${entry.text}</div>
-    `;
-    container.appendChild(div);
-  });
+  modal.innerHTML = `
+    <div class="diary-inner">
+      <div class="diary-header">
+        <div>
+          <div class="diary-title">📓 Diario de ${ai.name}</div>
+          <div class="diary-subtitle">${countText}</div>
+        </div>
+        <button class="diary-close" onclick="document.getElementById('diaryModal').remove()">✕</button>
+      </div>
+      <div class="diary-entries">${entriesHTML}</div>
+    </div>`;
+
+  // Cerrar al clickear fuera
+  modal.onclick = (ev) => { if(ev.target === modal) modal.remove(); };
+  scene.appendChild(modal);
 }
 
 function closeDiaryModal() {
   const modal = document.getElementById('diaryModal');
-  if(modal) modal.classList.remove('open');
+  if(modal) modal.remove();
 }
 
 // Conectar checkDiaryUrge al tick de vida
