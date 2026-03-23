@@ -275,8 +275,9 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   <div><div class="t-name" id="tname">ANIMIX</div><div class="t-by">ANIMATION XD PRODUCTIONS</div></div>
   <div class="t-status" style="margin-left:auto;margin-right:auto;"><div class="sdot"></div><div class="stxt" id="stxt">en línea</div></div>
   <div class="t-btns">
-    <button class="tbtn sphere-topbtn" onclick="openSphereModal()" title="Ver alma de la IA" id="sphereTopBtn" style="position:relative;overflow:hidden;">
+    <button class="tbtn ia-soul-btn" onclick="openSphereModal()" title="Alma de la IA" id="sphereTopBtn" style="display:flex;align-items:center;gap:5px;padding:0 10px;width:auto;border-color:var(--bd2);background:rgba(255,136,204,0.08);">
       <div class="sphere-mini" id="sphereMini"></div>
+      <span style="font-size:10px;font-family:var(--mo);letter-spacing:1px;color:var(--t2);">IA</span>
     </button>
     <button class="tbtn" onclick="openSettings()">⚙</button>
     <button class="tbtn" onclick="toggleTheme()" id="tbtheme">☾</button>
@@ -302,8 +303,6 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   <div class="main">
     <div class="tabs">
       <button class="tab on" onclick="setTab('chat')" id="tab-chat">💬 Chat</button>
-      <button class="tab" onclick="setTab('vid')" id="tab-vid">🎬 Video IA <span style="font-size:8px;background:var(--r);color:#fff;padding:1px 5px;border-radius:6px;margin-left:3px;">PRONTO</span></button>
-      <button class="tab" onclick="setTab('gal')" id="tab-gal">🖼 Galería</button>
     </div>
 
     <div class="pane" id="pane-chat" style="display:flex;">
@@ -860,6 +859,9 @@ function updateId(){
   const sc = ai.gender==='masculino' ? {c:'#00d4ff',d:'#0088cc'} : {c:'#ff88cc',d:'#cc3399'};
   document.documentElement.style.setProperty('--sphere-color', sc.c);
   document.documentElement.style.setProperty('--sphere-dark', sc.d);
+  // Actualizar fondo del botón IA
+  const iabtn = document.getElementById('sphereTopBtn');
+  if(iabtn) iabtn.style.background = ai.gender==='masculino' ? 'rgba(0,212,255,0.10)' : 'rgba(255,136,204,0.10)';
   applyColor(ai.color);
 }
 function saveMemory(){try{localStorage.setItem('animix_user',JSON.stringify(user));localStorage.setItem('animix_ai',JSON.stringify({name:ai.name,gender:ai.gender,color:ai.color,persona:ai.persona}));localStorage.setItem('animix_chats',JSON.stringify(chats.slice(0,20)));}catch(e){}}
