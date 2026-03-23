@@ -1694,7 +1694,10 @@ function buildSphereEnv() {
   });
   loadMind();
   const scene = document.getElementById('sphereScene');
+  // Limpiar TODOS los elementos anteriores incluyendo esfera
   scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-nametag,.sphere-needs,.home-obj,.float-label,.mind-panel').forEach(e=>e.remove());
+  const oldSphere = document.getElementById('sphereMain');
+  if(oldSphere) oldSphere.remove();
 
   // Fondo gris oscuro con sutileza
   scene.style.background = '#111118'; /* fondo fijo gris oscuro */
@@ -1789,6 +1792,7 @@ function buildMainSphere(scene) {
 
   const sphere = document.createElement('div');
   sphere.id = 'sphereMain';
+  sphere.className = 'sphere-main';
   sphere.style.cssText = [
     'position:absolute',
     'width:75px','height:75px',
