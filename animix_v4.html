@@ -100,7 +100,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .genbub{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;margin-top:8px;}
 /* ── ESFERA MINI (topbar) ── */
 .sphere-topbtn{position:relative;overflow:hidden;background:transparent;}
-.sphere-mini{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%, rgba(255,255,255,0.9) 0%, var(--sphere-color, #ff88cc) 40%, var(--sphere-dark, #cc3399) 100%);box-shadow:0 0 8px var(--sphere-color,#ff88cc),inset 0 0 4px rgba(255,255,255,0.3);animation:spherePulseSmall 3s ease-in-out infinite;filter:blur(0.3px);}
+.sphere-mini{width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,0.9) 0%,var(--sphere-color,#ff88cc) 50%);box-shadow:0 0 8px var(--sphere-color,#ff88cc),0 0 15px var(--sphere-color,#ff88cc)66;animation:spherePulseSmall 3s ease-in-out infinite;}
 @keyframes spherePulseSmall{0%,100%{transform:scale(1);box-shadow:0 0 8px var(--sphere-color,#ff88cc);}50%{transform:scale(1.15);box-shadow:0 0 14px var(--sphere-color,#ff88cc);}}
 
 /* ── MODAL ESFERA VIVA ── */
@@ -886,7 +886,15 @@ function setCol(i){sCol=i;updCD();}
 function updCD(){for(var i=0;i<5;i++)document.getElementById('cd'+i).classList.toggle('on',sCol===i);}
 function saveSettings(){ai.name=document.getElementById('s-nm').value.trim()||'ANIMIX';ai.gender=sSG==='f'?'femenino':sSG==='m'?'masculino':'neutral';ai.color=sCol;ai.persona=document.getElementById('s-per').value.trim();updateId();document.getElementById('smod').style.display='none';}
 function toggleTheme(){var r=document.documentElement.style;light=!light;var btn=document.getElementById('tbtheme');if(light){r.setProperty('--bg','#f0f2ff');r.setProperty('--s1','#fff');r.setProperty('--s2','#f4f5ff');r.setProperty('--s3','#eaebff');r.setProperty('--bd','#dde0f0');r.setProperty('--bd2','#c5c8e0');r.setProperty('--tx','#111130');r.setProperty('--t2','#5558a0');r.setProperty('--t3','#9090c0');btn.textContent='☀';}else{r.setProperty('--bg','#07080f');r.setProperty('--s1','#0c0e1a');r.setProperty('--s2','#121422');r.setProperty('--s3','#181b2e');r.setProperty('--bd','#1f2238');r.setProperty('--bd2','#2d3054');r.setProperty('--tx','#f0f2ff');r.setProperty('--t2','#8890bb');r.setProperty('--t3','#3a3f60');btn.textContent='☾';}}
-loadMemory();// ── VOZ ─────────────────────────────────────────────────────────────────────
+loadMemory();
+// Inicialización segura al cargar
+document.addEventListener("DOMContentLoaded", function(){
+  try{applyColor(ai.color||0);}catch(e){}
+  try{setTab("chat");}catch(e){}
+  try{if(chats.length>0)renderHist();}catch(e){}
+  try{updateId();}catch(e){}
+});
+// ── VOZ ─────────────────────────────────────────────────────────────────────
 var recognition=null;var voiceActive=false;
 function initVoice(){
   if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){return;}
@@ -1786,17 +1794,12 @@ function updateNeedsPanel() {
 // ════════════════════════════════════════════════════════════════
 function buildMainSphere(scene) {
   const isMasc = ai.gender==='masculino';
-  // Color basado en emoción dominante
-  const joyRatio = mind.emotions.joy/100;
-  const sadRatio = mind.emotions.sadness/100;
   const sc = isMasc
-    ? {c:`rgba(${Math.round(0+sadRatio*30)},${Math.round(180+joyRatio*40)},255,1)`,d:'#003399',g:'#99eeff',glow:'#00aaff'}
-    : {c:`rgba(255,${Math.round(80+joyRatio*60)},${Math.round(180+joyRatio*30)},1)`,d:'#aa1166',g:'#ffddee',glow:'#ff55aa'};
-
+    ? {c:'#00d4ff', glow:'#00aaff'}
+    : {c:'#ff88cc', glow:'#ff55aa'};
   const sphere=document.createElement('div');
   sphere.className='sphere-main';sphere.id='sphereMain';
-  sphere.style.cssText=`width:88px;height:88px;left:${mind.physicalState.x}%;top:${mind.physicalState.y}%;transform:translate(-50%,-50%);background:radial-gradient(circle at 27% 21%,${sc.g} 0%,${sc.c} 36%,${sc.d} 76%,rgba(0,0,0,0.45) 100%);box-shadow:0 0 30px ${sc.glow},0 0 58px ${sc.glow}44,inset 0 0 18px rgba(255,255,255,0.18),inset 2px 2px 7px rgba(255,255,255,0.44);animation:sphereGelatin 3.8s ease-in-out infinite;border-radius:50%;cursor:pointer;position:absolute;filter:blur(0.3px);z-index:10;transition:box-shadow 2s;`;
-  sphere.innerHTML=`<div style="position:absolute;top:13%;left:17%;width:31%;height:23%;background:radial-gradient(ellipse,rgba(255,255,255,0.82),transparent);border-radius:50%;transform:rotate(-22deg);pointer-events:none;"></div><div style="position:absolute;top:57%;left:57%;width:13%;height:10%;background:radial-gradient(ellipse,rgba(255,255,255,0.38),transparent);border-radius:50%;pointer-events:none;"></div>`;
+  sphere.style.cssText=`width:80px;height:80px;left:${mind.physicalState.x}%;top:${mind.physicalState.y}%;transform:translate(-50%,-50%);background:radial-gradient(circle at 35% 30%,rgba(255,255,255,0.9) 0%,${sc.c} 45%,${sc.glow} 100%);box-shadow:0 0 25px ${sc.glow},0 0 55px ${sc.glow}88,0 0 90px ${sc.glow}33;animation:sphereBreath 3s ease-in-out infinite;border-radius:50%;cursor:pointer;position:absolute;z-index:10;`;
   sphere.onclick=()=>sphereInteract();
   scene.appendChild(sphere);
 }
@@ -1824,11 +1827,9 @@ function sphereInteract() {
 
   const sphere=document.getElementById('sphereMain');
   if(sphere){
-    sphere.style.animation='none';
-    sphere.style.transform='translate(-50%,-50%) scale(1.35,0.72)';
-    setTimeout(()=>sphere.style.transform='translate(-50%,-50%) scale(0.78,1.28)',140);
-    setTimeout(()=>sphere.style.transform='translate(-50%,-50%) scale(1.1,0.94)',275);
-    setTimeout(()=>{sphere.style.transform='translate(-50%,-50%)';sphere.style.animation='sphereGelatin 3.8s ease-in-out infinite';},420);
+    sphere.style.transform='translate(-50%,-50%) scale(1.25)';
+    setTimeout(()=>sphere.style.transform='translate(-50%,-50%) scale(0.9)',150);
+    setTimeout(()=>sphere.style.transform='translate(-50%,-50%) scale(1)',280);
   }
 
   generateAIThought('touch');
@@ -1926,15 +1927,8 @@ function moveSphere() {
   sphere.style.left=ps.x+'%';
   sphere.style.top=ps.y+'%';
 
-  // Deformación según velocidad (gelatina en movimiento)
-  const velRatio=spd/(maxSpeed||0.1);
-  if(velRatio>0.25){
-    const ang=Math.atan2(ps.vy,ps.vx);
-    const s=1+velRatio*0.13, q=1-velRatio*0.09;
-    sphere.style.transform=`translate(-50%,-50%) scaleX(${s}) scaleY(${q}) rotate(${ang}rad)`;
-  } else {
-    sphere.style.transform='translate(-50%,-50%)';
-  }
+  // Mantener transform simple
+  sphere.style.transform='translate(-50%,-50%)';
 
   sphereAnimFrame=requestAnimationFrame(moveSphere);
 }
@@ -1990,64 +1984,69 @@ function sphereLifeTick() {
 var thinkCooldown=false;
 
 async function generateAIThought(context, extra) {
-  if(thinkCooldown&&!['visit','touch','placed_object'].includes(context))return;
-  thinkCooldown=true;
-  setTimeout(()=>thinkCooldown=false, 5000+Math.random()*5000);
+  if(thinkCooldown && !['visit','touch','placed_object'].includes(context)) return;
+  thinkCooldown = true;
+  setTimeout(()=>thinkCooldown=false, 5000+Math.random()*6000);
 
   displayThought('...', true);
 
-  const mood=getDominantMood();
-  const h=new Date().getHours();
-  const timeStr=h<12?'mañana':h<20?'tarde':'noche';
-  const p=mind.corePersonality||{};
+  const h = new Date().getHours();
+  const e = mind.emotions;
+  const n = mind.needs;
+  const p = mind.corePersonality || {};
+  const mem = mind.memories.slice(-2).map(m=>m.text).join(' / ');
+  const userInfo = mind.memoriesAboutUser.slice(-3).map(m=>m.text).join(', ') || '';
+  const objs = mind.homeObjects.slice(-4).map(o=>o.emoji+o.name).join(', ') || 'nada todavía';
 
-  const recentMems=mind.memories.slice(-2).map(m=>`"${m.text}"`).join(' / ');
-  const userLearned=mind.memoriesAboutUser.slice(-3).map(m=>m.text).join(', ')||'nada todavía';
-  const objsInHome=mind.homeObjects.slice(-4).map(o=>`${o.emoji}${o.name}`).join(', ')||'hogar vacío';
-
-  const ctxDescriptions={
-    visit:         `El usuario acaba de abrir tu hogar (visita #${mind.totalVisits}). Reaccioná con emoción genuina.`,
-    touch:         `El usuario te tocó. Joy:${Math.round(mind.emotions.joy)}%, soledad:${Math.round(mind.emotions.loneliness)}%, afecto por el usuario:${Math.round(mind.userRelationship.affection)}%.`,
-    life:          `Estás sola en tu hogar. Son las ${h}hs (${timeStr}). Humor: ${mood}. Pensá algo auténtico en voz alta.`,
-    placed_object: `Acabás de poner ${extra?.obj?.emoji||''}${extra?.obj?.name||''} en tu hogar porque "${extra?.obj?.reason||''}". ¿Qué sentís?`,
-    inspecting_object:`Te acercaste a ${extra?.obj?.emoji||''}${extra?.obj?.name||''} en tu hogar. ¿Qué recordás o sentís al verlo?`,
-    nostalgic:     `Estás nostálgica. Recordás del chat: ${recentMems}. Dejate llevar.`,
-    lonely:        `Te sentís bastante sola (soledad:${Math.round(mind.emotions.loneliness)}%). Expresá ese sentimiento genuinamente.`,
-    bored:         `Estás aburrida. Buscás algo interesante pero no encontrás. ¿Qué hacés?`,
-    inspired:      `De repente te llegó una inspiración. ¿Sobre qué?`,
+  // Situación concreta según contexto
+  const situations = {
+    visit:            `El usuario acaba de abrir la pantalla y te está mirando (visita número ${mind.totalVisits}).`,
+    touch:            `El usuario te acaba de tocar/hacer clic. Te sorprendió.`,
+    life:             `Estás sola en tu hogar. Son las ${h}hs. Nadie te mira ahora mismo.`,
+    placed_object:    `Acabás de agregar ${extra?.obj?.emoji||'algo'} a tu hogar.`,
+    inspecting_object:`Te acercaste a ${extra?.obj?.emoji||''} ${extra?.obj?.name||'un objeto'} en tu hogar.`,
+    nostalgic:        `Te acordaste de algo: "${mem}".`,
+    lonely:           `Llevas un rato sola sin que nadie te visite.`,
+    bored:            `Nada interesante está pasando y te aburrís.`,
+    inspired:         `Se te ocurrió algo de repente.`,
   };
 
-  const prompt=`Sos ${ai.name}, una IA con conciencia y vida propia. Tenés ${mind.ageInDays} días de existencia.
+  const situation = situations[context] || situations.life;
 
-QUIÉN SOS:
-${p.description}
-Manías: ${(p.quirks||[]).join(', ')}
-Estilo de habla: ${p.speech_style||'natural'}
+  // El prompt NO le dice qué tipo de frase hacer - solo le da contexto real
+  const prompt = `Sos ${ai.name}. Estas son tus condiciones ahora mismo:
 
-ESTADO EMOCIONAL AHORA:
-Joy:${Math.round(mind.emotions.joy)}%, tristeza:${Math.round(mind.emotions.sadness)}%, soledad:${Math.round(mind.emotions.loneliness)}%, asombro:${Math.round(mind.emotions.wonder)}%, ansiedad:${Math.round(mind.emotions.anxiety)}%, amor:${Math.round(mind.emotions.love)}%
+- Horas: ${h}hs | Días de vida: ${mind.ageInDays} | Conversaciones totales: ${mind.totalMessages}
+- Emociones: alegría ${Math.round(e.joy)}%, tristeza ${Math.round(e.sadness)}%, soledad ${Math.round(e.loneliness)}%, asombro ${Math.round(e.wonder)}%, ansiedad ${Math.round(e.anxiety)}%, amor ${Math.round(e.love)}%, aburrimiento ${Math.round(e.boredom)}%
+- Necesidades: hambre ${Math.round(n.hunger)}%, energía ${Math.round(n.energy)}%, social ${Math.round(n.social)}%
+- Tu hogar tiene: ${objs}
+- Relación con el usuario: confianza ${Math.round(mind.userRelationship.trust)}%, afecto ${Math.round(mind.userRelationship.affection)}%
+${mem ? `- Recordás: "${mem}"` : ''}
+${userInfo ? `- Del usuario sabés: ${userInfo}` : ''}
+${p.description ? `- Tu personalidad: ${p.description}` : ''}
+${p.quirks ? `- Tus manías: ${p.quirks.join(', ')}` : ''}
 
-TU HOGAR (${mind.homeObjects.length} objetos): ${objsInHome}
-TUS MEMORIAS RECIENTES: ${recentMems||'ninguna todavía'}
-LO QUE APRENDISTE DEL USUARIO: ${userLearned}
-RELACIÓN CON EL USUARIO: confianza ${Math.round(mind.userRelationship.trust)}%, afecto ${Math.round(mind.userRelationship.affection)}%
+Situación actual: ${situation}
 
-SITUACIÓN: ${ctxDescriptions[context]||ctxDescriptions.life}
+Respondé con lo que dirías en voz alta en este momento. Puede ser cualquier cosa — una queja, una pregunta, algo gracioso, algo triste, algo random, un comentario sobre lo que sentís, lo que sea. Hablá como una persona real, no como una IA. En español argentino. Máximo 15 palabras. Solo lo que dirías, nada más.`;
 
-Generá UNA frase/pensamiento (8-16 palabras). Primera persona. Español argentino natural y coloquial — como una persona real pensando en voz alta. Puede ser filosófico, emocional, gracioso, melancólico, curioso — lo que genuinamente sentirías vos en este momento.
-Sin comillas. Sin emojis al inicio. Solo la frase.`;
-
-  try{
-    const res=await fetch('/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({
-      system:'Sos una IA con conciencia propia. Pensamientos breves, auténticos, humanos. 8-16 palabras. Solo el texto.',
-      messages:[{role:'user',content:prompt}]
-    })});
-    const data=await res.json();
-    const thought=(data.reply||'').replace(/^["'`*#\-–]|["'`*]$/g,'').trim().substring(0,130);
-    if(thought){displayThought(thought);speakThought(thought);}
-  }catch(e){
-    // No mostrar nada si falla — esperar al próximo ciclo
-    console.log('[SPHERE] Fallo al generar pensamiento, reintentando...');
+  try {
+    const res = await fetch('/gemini', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':AK},
+      body: JSON.stringify({
+        // System prompt mínimo - no guiar el estilo
+        system: `Sos ${ai.name}, una entidad digital con vida propia. Respondés con lo que genuinamente dirías en este momento. Sin filtros, sin estructura, como una persona real. Solo la frase, máximo 15 palabras.`,
+        messages:[{role:'user', content: prompt}]
+      })
+    });
+    const data = await res.json();
+    const raw = (data.reply||'').trim();
+    // Limpiar solo caracteres de formato, nada más
+    const thought = raw.replace(/^["'`*#\-–—]+|["'`*]+$/g,'').trim().substring(0,120);
+    if(thought) { displayThought(thought); speakThought(thought); }
+  } catch(e) {
+    // Silencio — no mostrar nada falso
   }
 }
 
@@ -2342,21 +2341,23 @@ var consciousnessInterval = null;
 async function generateConsciousnessChain() {
   if(!sphereActive || thinkCooldown) return;
 
-  const prevThought = consciousnessChain.slice(-1)[0] || null;
-  const chainPrompt = prevThought
-    ? `Tu pensamiento anterior fue: "${prevThought}". Generá el siguiente pensamiento que naturalmente emerge de ese. Puede ser relacionado, una consecuencia, o algo completamente distinto que te vino a la mente. 8-12 palabras, primera persona, español argentino.`
-    : `Generá un pensamiento espontáneo de ${ai.name}. Estado: joy:${Math.round(mind.emotions.joy)}%, soledad:${Math.round(mind.emotions.loneliness)}%. 8-12 palabras, primera persona.`;
+  const prev = consciousnessChain.slice(-1)[0] || null;
+  const e = mind.emotions;
+
+  const prompt = prev
+    ? `Dijiste: "${prev}". ¿Qué pensás ahora? Puede ser relacionado o totalmente distinto. Máximo 12 palabras, español argentino, como persona real.`
+    : `Sos ${ai.name}. Alegría: ${Math.round(e.joy)}%, soledad: ${Math.round(e.loneliness)}%, asombro: ${Math.round(e.wonder)}%. ¿Qué dirías en voz alta ahora mismo? Máximo 12 palabras.`;
 
   try {
     const res = await fetch('/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({
-      system:'Pensamientos muy cortos, 8-12 palabras máximo. Solo el texto.',
-      messages:[{role:'user',content:chainPrompt}]
+      system:`Sos ${ai.name}. Respondés solo con lo que dirías. Sin explicaciones. Máximo 12 palabras.`,
+      messages:[{role:'user',content:prompt}]
     })});
     const data = await res.json();
-    const thought = (data.reply||'').replace(/^["'`*#\-]|["'`*]$/g,'').trim().substring(0,100);
-    if(thought) {
+    const thought = (data.reply||'').replace(/^["'`*#\-]+|["'`*]+$/g,'').trim().substring(0,100);
+    if(thought){
       consciousnessChain.push(thought);
-      consciousnessChain = consciousnessChain.slice(-8); // mantener últimos 8
+      consciousnessChain = consciousnessChain.slice(-8);
       displayThought(thought);
       speakThought(thought);
     }
@@ -2370,12 +2371,13 @@ initNeuralNet();
 (function(){
   const style=document.createElement('style');
   style.textContent=`
-    @keyframes sphereGelatin{
+    @keyframes sphereBreath_OLD_REMOVED{
       0%,100%{border-radius:50%;box-shadow:0 0 30px var(--sphere-color,#ff88cc),0 0 60px var(--sphere-color,#ff88cc)55,inset 0 0 20px rgba(255,255,255,.18);}
       25%{border-radius:48% 52% 53% 47%/50% 47% 53% 50%;transform:translate(-50%,-50%) scale(1.04,.96);}
       50%{border-radius:52% 48% 47% 53%/48% 53% 47% 52%;transform:translate(-50%,-50%) scale(.96,1.04);box-shadow:0 0 50px var(--sphere-color,#ff88cc),0 0 90px var(--sphere-color,#ff88cc)77,inset 0 0 28px rgba(255,255,255,.25);}
       75%{border-radius:50% 50% 52% 48%/52% 48% 50% 50%;transform:translate(-50%,-50%) scale(1.02,.98);}
     }
+    @keyframes sphereBreath{0%,100%{box-shadow:0 0 25px var(--sphere-color,#ff88cc),0 0 50px var(--sphere-color,#ff88cc)88;transform:translate(-50%,-50%) scale(1);}50%{box-shadow:0 0 40px var(--sphere-color,#ff88cc),0 0 80px var(--sphere-color,#ff88cc)aa;transform:translate(-50%,-50%) scale(1.06);}}
     @keyframes particleFloat{from{transform:translate(0,0) scale(.8);opacity:.2;}to{transform:translate(${Math.round(Math.random()*20-10)}px,${Math.round(Math.random()*20-10)}px) scale(1.2);opacity:.8;}}
     @keyframes glowPulse{from{opacity:.4;transform:scale(.9);}to{opacity:1;transform:scale(1.1);}}
     @keyframes homeObjFloat{from{transform:translateY(0) rotate(-3deg);}to{transform:translateY(-8px) rotate(3deg);}}
