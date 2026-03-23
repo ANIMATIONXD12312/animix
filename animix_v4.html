@@ -1864,6 +1864,9 @@ function buildDiary(scene) {
 
   wrapper.onmouseenter = () => wrapper.style.transform = 'scale(1.15)';
   wrapper.onmouseleave = () => wrapper.style.transform = 'scale(1)';
+  // Guardar posición real del diario para que la esfera pueda encontrarlo
+  // bottom:16px right:18px → en % aproximado
+  house.diaryPos = { x: 91, y: 87 };
   wrapper.onclick = () => openDiaryModal();
   scene.appendChild(wrapper);
 
@@ -2591,17 +2594,39 @@ async function checkDiaryUrge() {
 }
 
 async function moveSphereToDiary() {
-  // Mover la esfera hacia el diario (esquina inferior derecha)
   const ps = mind.physicalState;
-  ps.currentDestination = { x: 88, y: 82 };
-  ps.currentActivity = 'escribiendo';
+  const target = house.diaryPos || { x: 91, y: 87 };
 
-  // Animar el diario
+  // Apuntar al diario
+  ps.currentDestination = { x: target.x, y: target.y };
+  ps.currentActivity = 'yendo_al_diario';
+
+  // Animar el diario — parpadea esperando
   const diary = document.getElementById('diaryObj');
-  if(diary) diary.classList.add('sphere-near');
+  if(diary) {
+    diary.style.animation = 'none';
+    diary.style.filter = 'drop-shadow(0 0 15px rgba(255,200,50,1)) brightness(1.4)';
+  }
 
-  // Esperar a que llegue (~2s)
-  await new Promise(r => setTimeout(r, 2000));
+  // Esperar hasta que la esfera llegue cerca (máx 6s)
+  await new Promise(resolve => {
+    let checks = 0;
+    const interval = setInterval(() => {
+      const dx = ps.x - target.x;
+      const dy = ps.y - target.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      checks++;
+      if(dist < 12 || checks > 30) { // llegó o timeout
+        clearInterval(interval);
+        resolve();
+      }
+    }, 200);
+  });
+
+  // Detener la esfera junto al diario
+  ps.vx = 0; ps.vy = 0;
+  ps.currentDestination = null;
+  ps.currentActivity = 'escribiendo_diario';
 }
 
 async function writeDiaryEntry(emotion, intensity) {
@@ -2653,28 +2678,39 @@ Escribí una entrada de diario. 2-4 oraciones máximo. En primera persona. Como 
     mind.diary = mind.diary.slice(-50); // máx 50 entradas
     saveMind();
 
-    // Actualizar contador en el diario
+    // Actualizar badge del diario con el nuevo conteo
     const diaryObj = document.getElementById('diaryObj');
     if(diaryObj) {
+      // Restaurar animación normal
+      diaryObj.style.filter = '';
+      diaryObj.style.animation = '';
+      // Flash de "terminó de escribir"
+      diaryObj.style.filter = 'drop-shadow(0 0 20px rgba(255,200,50,1)) brightness(1.6)';
+      setTimeout(()=>{ if(diaryObj) diaryObj.style.filter=''; }, 1200);
       let countEl = diaryObj.querySelector('.diary-count');
       if(!countEl) {
         countEl = document.createElement('div');
         countEl.className = 'diary-count';
+        // Mismo estilo que buildDiary
+        countEl.style.cssText = 'position:absolute;top:-8px;right:-6px;background:#ff9944;color:#000;font-size:9px;font-weight:700;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;box-shadow:0 0 6px rgba(255,150,50,0.8);font-family:monospace;';
         diaryObj.appendChild(countEl);
       }
       countEl.textContent = mind.diary.length;
-      // Flash de que escribió
-      diaryObj.style.filter = 'drop-shadow(0 0 15px rgba(255,200,50,0.9))';
-      setTimeout(() => diaryObj.style.filter = '', 1500);
     }
 
-    // Mostrar pensamiento de que escribió
-    displayThought('escribí algo en mi diario');
-    speakThought('escribí algo en mi diario');
+    // Pensamiento post-escritura generado por IA
+    generateAIThought('placed_object', {obj:{emoji:'📓',name:'diario'}});
 
-    // Quitar animación del diario
+    // Liberar la esfera para que vuelva a explorar
+    if(mind.physicalState) {
+      mind.physicalState.currentActivity = 'explorando';
+      mind.physicalState.currentDestination = null;
+      // Elegir nuevo destino lejos del diario
+      mind.physicalState.vx = (Math.random()-0.5)*0.2;
+      mind.physicalState.vy = (Math.random()-0.5)*0.2;
+    }
     const diary = document.getElementById('diaryObj');
-    if(diary) diary.classList.remove('sphere-near');
+    if(diary) { diary.style.filter=''; diary.classList.remove('sphere-near'); }
 
   } catch(e) {
     const diary = document.getElementById('diaryObj');
@@ -2686,6 +2722,14 @@ function openDiaryModal() {
   // El modal se crea DENTRO del entorno de la esfera
   const scene = document.getElementById('sphereScene');
   if(!scene) return;
+
+  // Eliminar badge — ya viste la notificación
+  const badge = document.querySelector('#diaryObj .diary-count');
+  if(badge) {
+    badge.style.transform = 'scale(0)';
+    badge.style.transition = 'transform 0.3s ease';
+    setTimeout(()=>badge.remove(), 300);
+  }
 
   // Eliminar modal anterior si existe
   const old = document.getElementById('diaryModal');
