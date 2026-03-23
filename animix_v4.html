@@ -957,59 +957,22 @@ async function speakElevenLabs(text, btnEl) {
   try {
     const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').substring(0,600);
     const voiceId = VOICE_IDS[ai.gender] || VOICE_IDS.femenino;
-
-    // Usar streaming — empieza a reproducir mientras llega el audio
-    // Truco: fetch con streaming + ReadableStream → MediaSource
     const res = await fetch('/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: clean, voiceId: voiceId, gender: ai.gender })
     });
-    if (!res.ok) throw new Error('TTS error ' + res.status);
-
+    if (!res.ok) throw new Error('TTS ' + res.status);
     const emotion = res.headers.get('X-Emotion') || 'neutro';
     if (btnEl) {
       const emo = EMOTION_EMOJI[emotion] || '🔊';
       btnEl.querySelector('.abtn-label').textContent = emo + ' Reproduciendo';
     }
-
-    // Streaming: leer chunks y reproducir apenas llegan
-    const reader = res.body.getReader();
-    const chunks = [];
-    
-    // Leer primer chunk rápido para empezar reproducción
-    const firstChunk = await reader.read();
-    if (firstChunk.done || !firstChunk.value) throw new Error('empty');
-    chunks.push(firstChunk.value);
-
-    // Reproducir con lo que ya llegó mientras seguimos leyendo
-    const firstBlob = new Blob(chunks, { type: 'audio/mpeg' });
-    const url = URL.createObjectURL(firstBlob);
-    const audio = new Audio(url);
-
-    // Seguir leyendo en background y actualizar el src cuando tengamos todo
-    (async () => {
-      while(true) {
-        const { done, value } = await reader.read();
-        if(done) break;
-        chunks.push(value);
-      }
-      // Reemplazar con audio completo para evitar cortes
-      const fullBlob = new Blob(chunks, { type: 'audio/mpeg' });
-      const fullUrl = URL.createObjectURL(fullBlob);
-      const currentTime = audio.currentTime;
-      if(!audio.ended && !audio.paused) {
-        audio.src = fullUrl;
-        audio.currentTime = currentTime;
-        audio.play().catch(()=>{});
-      }
-      URL.revokeObjectURL(url);
-      audio.onended = () => URL.revokeObjectURL(fullUrl);
-    })();
-
-    return audio;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    return makeAudio(url);  // usa wrapper que registra el audio
   } catch(e) {
-    console.warn('[TTS] ElevenLabs falló:', e.message);
+    console.warn('[TTS] falló:', e.message);
     return null;
   }
 }
@@ -1096,6 +1059,28 @@ var callAnalyser = null;
 var callVADTimer = null;
 var callVADActive = false;
 var callCurrentAudio = null;
+var _allAudioObjects = []; // registro global de todos los audios
+
+function killAllAudio() {
+  _allAudioObjects.forEach(a => {
+    try { a.pause(); a.src=''; } catch(e){}
+  });
+  _allAudioObjects = [];
+  if(window.speechSynthesis) window.speechSynthesis.cancel();
+  callCurrentAudio = null;
+  activeAudio = null;
+}
+
+// Wrapper que registra cada Audio creado
+function makeAudio(url) {
+  const a = new Audio(url);
+  _allAudioObjects.push(a);
+  a.onended = () => {
+    _allAudioObjects = _allAudioObjects.filter(x=>x!==a);
+    try { URL.revokeObjectURL(url); } catch(e){}
+  };
+  return a;
+}
 var callChunks = [];
 var callMediaRecorder = null;
 var callSilenceStart = null;
@@ -1125,18 +1110,7 @@ function closeCallModal() {
   callAITalking = false;
   document.getElementById('callModal').classList.remove('open');
   stopCallMic();
-  // Parar TODO audio activo
-  if (callCurrentAudio) {
-    callCurrentAudio.pause();
-    callCurrentAudio.src = '';
-    callCurrentAudio = null;
-  }
-  if (activeAudio) {
-    activeAudio.pause();
-    activeAudio.src = '';
-    activeAudio = null;
-  }
-  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  killAllAudio();  // mata TODO
   if (callAnimFrame) { cancelAnimationFrame(callAnimFrame); callAnimFrame = null; }
 }
 
@@ -1239,10 +1213,18 @@ async function callAskAI(userText) {
     const reply = (data && data.reply) || 'No pude responder.';
     history.push({ role: 'ai', content: reply });
 
-    // Mostrar respuesta
+    // Mostrar respuesta palabra por palabra (efecto typing)
     const transcriptEl = document.getElementById('callTranscript');
-    transcriptEl.textContent = reply.replace(/\*\*/g,'').replace(/<[^>]+>/g,'').substring(0, 120) + (reply.length > 120 ? '...' : '');
     transcriptEl.classList.add('has-text');
+    const cleanReply = reply.replace(/\*\*/g,'').replace(/<[^>]+>/g,'').substring(0,150);
+    const words = cleanReply.split(' ');
+    transcriptEl.textContent = '';
+    for(let i=0; i<words.length; i++) {
+      if(!callActive) break;
+      transcriptEl.textContent = words.slice(0,i+1).join(' ') + (i<words.length-1?' ▋':'');
+      await new Promise(r=>setTimeout(r, 60));
+    }
+    transcriptEl.textContent = cleanReply;
 
     // También agregar al chat principal
     addBub('u', userText); addBub('ai', fmt(reply)); saveMemory();
