@@ -1057,6 +1057,7 @@ function speak(text){
 // ── SISTEMA DE LLAMADA DE VOZ ─────────────────────────────────────────────────
 var callActive = false;
 var callMuted = false;
+var callAITalking = false;  // TRUE mientras la IA está hablando — bloquea todo
 var callMediaStream = null;
 var callAudioContext = null;
 var callAnalyser = null;
@@ -1136,6 +1137,7 @@ function startMediaRecorder() {
 }
 
 function stopAndTranscribe() {
+  if (callAITalking) return;  // BLOQUEO TOTAL — IA hablando, ignorar
   if (!callMediaRecorder || callMediaRecorder.state === 'inactive') return;
   callMediaRecorder.stop();
   callMediaRecorder.onstop = async () => {
@@ -1201,7 +1203,8 @@ async function callAskAI(userText) {
     // También agregar al chat principal
     addBub('u', userText); addBub('ai', fmt(reply)); saveMemory();
 
-    // SILENCIAR MIC FÍSICAMENTE mientras la IA habla
+    // BLOQUEAR todo mientras la IA habla
+    callAITalking = true;
     setMicEnabled(false);
     // Parar grabador y limpiar todo
     if (callMediaRecorder && callMediaRecorder.state !== 'inactive') {
@@ -1223,6 +1226,7 @@ async function callAskAI(userText) {
       // + 800ms de buffer para que el eco del altavoz se disipe
       setTimeout(() => {
         if (!callActive) return;
+        callAITalking = false;  // DESBLOQUEAR
         callChunks = [];
         callVADActive = false;
         callSilenceStart = null;
@@ -1271,7 +1275,7 @@ function runVAD() {
       }
     }
 
-    if (callMuted || callCurrentAudio) {
+    if (callMuted || callAITalking || callCurrentAudio) {
       // Resetear VAD completamente mientras IA habla
       callVADActive = false;
       callSilenceStart = null;
