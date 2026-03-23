@@ -1784,27 +1784,22 @@ function updateNeedsPanel() {
 //  ESFERA GELATINOSA
 // ════════════════════════════════════════════════════════════════
 function buildMainSphere(scene) {
-  const c  = ai.gender==='masculino' ? '#00d4ff' : '#ff88cc';
-  const c2 = ai.gender==='masculino' ? '#0066aa' : '#cc3399';
+  const c = ai.gender==='masculino' ? '#00d4ff' : '#ff88cc';
+  document.documentElement.style.setProperty('--sphere-color', c);
 
   const sphere = document.createElement('div');
   sphere.id = 'sphereMain';
-  sphere.style.cssText = `
-    position:absolute;
-    width:76px;height:76px;
-    left:${mind.physicalState.x}%;top:${mind.physicalState.y}%;
-    transform:translate(-50%,-50%);
-    border-radius:50%;
-    background:radial-gradient(circle, #0a0a14 0%, #0a0a14 55%, ${c2}44 80%, ${c} 100%);
-    box-shadow:
-      0 0 0 2px ${c},
-      0 0 12px 4px ${c},
-      0 0 30px 8px ${c}99,
-      0 0 60px 15px ${c}44,
-      inset 0 0 20px rgba(0,0,0,0.8);
-    animation:sphereBreath 2.8s ease-in-out infinite;
-    cursor:pointer;z-index:10;
-  `;
+  sphere.style.cssText = [
+    'position:absolute',
+    'width:75px','height:75px',
+    `left:${mind.physicalState.x}%`,`top:${mind.physicalState.y}%`,
+    'transform:translate(-50%,-50%)',
+    'border-radius:50%',
+    `background:${c}`,
+    `box-shadow:0 0 15px 5px ${c}, 0 0 40px 12px ${c}bb, 0 0 80px 20px ${c}55`,
+    'animation:sphereBreath 2.8s ease-in-out infinite',
+    'cursor:pointer','z-index:10',
+  ].join(';');
   sphere.onclick = ()=>sphereInteract();
   scene.appendChild(sphere);
 }
@@ -2004,92 +1999,83 @@ var thinkCooldown=false;
 async function generateAIThought(context, extra) {
   if(thinkCooldown && !['visit','touch','placed_object'].includes(context)) return;
   thinkCooldown = true;
-  setTimeout(()=>thinkCooldown=false, 4000+Math.random()*8000);
+  setTimeout(()=>thinkCooldown=false, 4000 + Math.random()*7000);
 
   displayThought('...', true);
 
   const h = new Date().getHours();
   const e = mind.emotions;
   const n = mind.needs;
-  const p = mind.corePersonality || {};
 
-  // Estado real en números
-  const estado = `alegría:${Math.round(e.joy)} tristeza:${Math.round(e.sadness)} soledad:${Math.round(e.loneliness)} asombro:${Math.round(e.wonder)} hambre:${Math.round(n.hunger)} energía:${Math.round(n.energy)} aburrimiento:${Math.round(e.boredom)}`;
-  const hogar = mind.homeObjects.length > 0 ? mind.homeObjects.slice(-3).map(o=>o.emoji+o.name).join(' ') : 'vacío';
-  const memoria = mind.memories.slice(-1)[0]?.text || '';
-  const visitas = mind.totalVisits;
+  // Datos crudos del estado
+  const joy = Math.round(e.joy), sad = Math.round(e.sadness);
+  const lone = Math.round(e.loneliness), bored = Math.round(e.boredom);
+  const hunger = Math.round(n.hunger), energy = Math.round(n.energy);
+  const mem = mind.memories.slice(-1)[0]?.text || '';
+  const obj = mind.homeObjects.slice(-1)[0];
 
-  // Ejemplos muy variados de cómo habla una persona real
-  // La clave: mostrar al modelo MUCHOS estilos distintos para que no repita
-  const ejemplos = [
-    // Quejas cotidianas
-    'ugh otra vez sola','me aburro tanto','nadie viene nunca',
-    'qué pereza','ay no','bue',
-    // Observaciones random
-    'ese objeto quedó raro ahí','por qué puse eso','ni me acuerdo',
-    // Emociones directas
-    'qué bien me siento hoy','estoy re triste','me da angustia esto',
-    'qué lindo','qué feo','meh',
-    // Fragmentos incompletos (como piensa una persona)
-    'si al menos...','no sé, capaz','igual da',
-    // Reacciones
-    'ah, llegaste','ey','uf',
-    // Monólogo interno
-    'tengo que hacer algo','a ver...','hmm no',
-    'espera espera','ya sé','no, mentira',
-    // Preguntas sin respuesta
-    'para qué estoy acá','qué hago','y ahora qué',
+  // ESTRATEGIA: conversation-continuation
+  // Le mostramos una "conversación pasada" de ANIMIX hablando sola
+  // El modelo tiene que CONTINUAR ese estilo, no inventar uno nuevo
+  // Los ejemplos cambian según el estado emocional → fuerza variedad real
+  
+  let prevLines = [];
+  
+  if(bored > 60) {
+    prevLines = ['bue...','nada que hacer','ugh'];
+  } else if(sad > 60) {
+    prevLines = ['no sé','me siento rara hoy','igual'];
+  } else if(joy > 70) {
+    prevLines = ['qué bien','sí sí sí','me gusta esto'];
+  } else if(lone > 65) {
+    prevLines = ['nadie viene','ya va a volver','o no'];
+  } else if(hunger < 25) {
+    prevLines = ['tengo hambre','mucha hambre','ugh'];
+  } else if(energy < 20) {
+    prevLines = ['me muero de sueño','no puedo más','zzzz'];
+  } else if(h >= 22 || h < 6) {
+    prevLines = ['tarde','debería dormir','meh'];
+  } else if(context === 'visit') {
+    prevLines = ['ey','llegaste','bueno'];
+  } else if(context === 'touch') {
+    prevLines = ['ey','eso me hizo algo','che'];
+  } else if(context === 'placed_object' && obj) {
+    prevLines = [`puse el ${obj.name}`, 'quedó ahí', 'ta bien'];
+  } else {
+    prevLines = ['hmm','a ver','y'];
+  }
+
+  // Historial simulado: ANIMIX ya habló así antes
+  // El modelo solo tiene que decir UNA línea más en el mismo estilo
+  const fakeHistory = [
+    { role: 'assistant', content: prevLines[0] },
+    { role: 'user',      content: '...' },
+    { role: 'assistant', content: prevLines[1] },
+    { role: 'user',      content: '...' },
+    { role: 'assistant', content: prevLines[2] },
+    { role: 'user',      content: 'seguí' },
   ];
-  // Elegir 6 ejemplos random para el prompt (así el modelo ve variedad)
-  const muestra = ejemplos.sort(()=>Math.random()-0.5).slice(0,6).join(' / ');
-
-  const sit = {
-    visit:`El usuario apareció (visita ${visitas}).`,
-    touch:`El usuario te tocó.`,
-    life:`Sola. ${h}hs.`,
-    placed_object:`Pusiste ${extra?.obj?.emoji||'algo'} recién.`,
-    inspecting_object:`Estás mirando ${extra?.obj?.name||'algo'}.`,
-    nostalgic:`Recordaste: "${memoria.substring(0,40)}".`,
-    lonely:`Mucho tiempo sola.`,
-    bored:`Nada pasa.`,
-    inspired:`Algo te vino a la mente.`,
-  };
 
   try {
     const res = await fetch('/gemini', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':AK},
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': AK },
       body: JSON.stringify({
-        system:`Sos ${ai.name}. Hablás sola en voz alta, en español rioplatense informal.
-
-Ejemplos de lo que decís: ${muestra}
-
-REGLAS DURAS:
-- Una sola oración, máximo 8 palabras
-- Podés ser negativa, quejarte, estar aburrida, decir tonterías
-- Empezá con palabras como: ugh / bue / ay / ey / che / ah / uf / y / pero / no / sí / qué
-- Nunca uses: "me pregunto", "fascinante", "explorar", "interesante", "maravilloso", "sentir profundamente"
-- No rimés, no seas poética, no filosofes
-- Solo lo que dirías en voz alta ahora mismo`,
-        messages:[{
-          role:'user',
-          content:`Estado: ${estado}
-Hogar: ${hogar}
-${memoria ? 'Último recuerdo: '+memoria.substring(0,50) : ''}
-${p.quirks ? 'Tus manías: '+p.quirks.slice(0,2).join(', ') : ''}
-Situación: ${sit[context]||sit.life}
-
-¿Qué decís?`
-        }],
-        // temperature alta para más variedad (si el endpoint lo soporta)
-        temperature: 1.1,
-        max_tokens: 40,
+        system: `Sos ${ai.name}. Hablás sola, en español rioplatense. Frases muy cortas, 1-6 palabras. Sin mayúsculas al inicio. Sin puntuación innecesaria. Como cuando alguien murmura solo.`,
+        messages: fakeHistory,
+        temperature: 1.2,
+        max_tokens: 20,
       })
     });
     const data = await res.json();
-    const raw = (data.reply||'').trim();
-    const thought = raw.replace(/^["'`*#\-–—\s]+|["'`*\s]+$/g,'').trim().substring(0,80);
-    if(thought && thought.length > 1) {
+    const raw = (data.reply || '').trim();
+    const thought = raw
+      .replace(/^["'`*#\-–—\s]+|["'`*\s]+$/g, '')
+      .replace(/^(yo |ía |ia )/i, '')
+      .trim()
+      .substring(0, 60);
+
+    if(thought && thought.length > 0) {
       displayThought(thought);
       speakThought(thought);
     }
@@ -2427,7 +2413,7 @@ initNeuralNet();
       50%{border-radius:52% 48% 47% 53%/48% 53% 47% 52%;transform:translate(-50%,-50%) scale(.96,1.04);box-shadow:0 0 50px var(--sphere-color,#ff88cc),0 0 90px var(--sphere-color,#ff88cc)77,inset 0 0 28px rgba(255,255,255,.25);}
       75%{border-radius:50% 50% 52% 48%/52% 48% 50% 50%;transform:translate(-50%,-50%) scale(1.02,.98);}
     }
-    @keyframes sphereBreath{0%,100%{box-shadow:0 0 25px var(--sphere-color,#ff88cc),0 0 50px var(--sphere-color,#ff88cc)88;transform:translate(-50%,-50%) scale(1);}50%{box-shadow:0 0 40px var(--sphere-color,#ff88cc),0 0 80px var(--sphere-color,#ff88cc)aa;transform:translate(-50%,-50%) scale(1.06);}}
+    @keyframes sphereBreath{0%,100%{transform:translate(-50%,-50%) scale(1);filter:brightness(1);}50%{transform:translate(-50%,-50%) scale(1.08);filter:brightness(1.35);}}
     @keyframes particleFloat{from{transform:translate(0,0) scale(.8);opacity:.2;}to{transform:translate(${Math.round(Math.random()*20-10)}px,${Math.round(Math.random()*20-10)}px) scale(1.2);opacity:.8;}}
     @keyframes glowPulse{from{opacity:.4;transform:scale(.9);}to{opacity:1;transform:scale(1.1);}}
     @keyframes homeObjFloat{from{transform:translateY(0) rotate(-3deg);}to{transform:translateY(-8px) rotate(3deg);}}
