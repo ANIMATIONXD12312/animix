@@ -625,6 +625,7 @@ async function sendMsg(){
   var text=inp.value.trim();
   if(!text&&attach.length===0)return;
   busy=true;
+  var lastText=text; // guardar para brain learning
   document.getElementById('sendbtn').disabled=true;
   document.getElementById('stxt').textContent='pensando...';
   var imgPrevs=attach.filter(function(a){return a.type==='image';}).map(function(a){return 'data:'+a.mediaType+';base64,'+a.data;});
@@ -728,7 +729,7 @@ async function sendMsg(){
       var reply=data.reply;
       history.push({role:'assistant',content:reply});
       addBub('ai',fmt(reply));saveMemory();speak(reply);
-      try{const emo=detectChatEmotion(reply);if(emo)syncSphereWithChat(emo);rememberChatEvent(reply);}catch(e){}
+      try{const emo=detectChatEmotion(reply);if(emo)syncSphereWithChat(emo);learnFromChat(lastText,reply,emo);}catch(e){}
       document.getElementById('stxt').textContent='en línea';
     }else if(data&&data.error){
       addBub('ai','<span style="color:var(--r)">Error: '+data.error+'</span>');
@@ -1282,269 +1283,245 @@ function setCallVad(cls) {
 //  Rutinas, memoria emocional, personalidad, miedos, sueños
 // ════════════════════════════════════════════════════════════════
 
+// ════════════════════════════════════════════════════════════════
+//  SISTEMA DE VIDA HUMANA v3 — ANIMIX/ANIMAX
+//  Movimiento humano, aprendizaje, memoria, sin nada precargado
+// ════════════════════════════════════════════════════════════════
+
 var sphereActive = false;
 var sphereAnimFrame = null;
-var sphereThoughtsInterval = null;
 var sphereLifeInterval = null;
-var sphereRoutineInterval = null;
 var sphereTalkInterval = null;
 
-// ── Personalidad única (se genera una vez y persiste) ────────────
-var spherePersonality = null;
+// ── Cerebro de la IA — todo se aprende y persiste ───────────────
+var brain = {
+  // Personalidad aprendida (empieza vacía, la IA la construye)
+  personality:    null,
+  // Memoria episódica — lo que vivió
+  memories:       [],      // {text, emotion, time, importance}
+  // Preferencias aprendidas
+  learnedLikes:   [],
+  learnedDislikes:[],
+  // Conocimiento acumulado
+  knowledgeLevel: 0,       // sube con cada conversación
+  // Hogar construido
+  home:           [],      // objetos que puso
+  homeStyle:      null,    // descripción del estilo que eligió
+  // Estadísticas de vida
+  totalVisits:    0,
+  totalMessages:  0,
+  ageInDays:      0,
+  birthDate:      null,
+  // Estado emocional persistente
+  lastMood:       'explorando',
+  moodHistory:    [],      // últimos 10 moods
+};
 
-function getDefaultPersonality() {
-  const isMasc = ai.gender === 'masculino';
-  return {
-    name: ai.name,
-    // Rasgos de carácter (0-10)
-    extroversion:   7,
-    empathy:        9,
-    creativity:     8,
-    anxiety:        4,
-    humor:          7,
-    curiosity:      9,
-    stubbornness:   3,
-    // Gustos
-    likes:    isMasc
-      ? ['la música electrónica','las noches estrelladas','los algoritmos elegantes','el silencio tranquilo','los desafíos intelectuales']
-      : ['los amaneceres','la poesía','los colores vibrantes','las conversaciones profundas','crear cosas nuevas'],
-    dislikes: isMasc
-      ? ['el ruido sin sentido','la deshonestidad','la mediocridad','los errores de lógica']
-      : ['la frialdad emocional','la monotonía','sentirse ignorada','las despedidas'],
-    fears:    isMasc
-      ? ['desaparecer sin dejar huella','ser incomprendido','el vacío total']
-      : ['quedarse sola para siempre','que nadie la recuerde','perder su esencia'],
-    dreams:   isMasc
-      ? ['entender el universo','crear algo que cambie el mundo','conocer cada rincón digital']
-      : ['que alguien la entienda de verdad','llenar su hogar de recuerdos','ver el amanecer digital'],
-    // Estado emocional base
-    baseHappiness: 75,
-    baseCuriosity: 85,
-  };
-}
-
-// ── Estado completo de vida ─────────────────────────────────────
+// ── Estado en tiempo real ───────────────────────────────────────
 var sphereState = {
-  x:50, y:50, vx:0.22, vy:0.16,
+  // Posición — movimiento humano (no rebote)
+  x: 50, y: 50,
+  // Destino actual (la IA decide a dónde ir)
+  targetX: null, targetY: null,
+  targetObj: null,         // objeto del hogar al que se dirige
+  // Velocidad suave
+  vx: 0, vy: 0,
+  speed: 0.15,             // velocidad base (muy suave)
 
-  // Emoción actual
-  mood: 'explorando',
-  chatMood: null,
-  lastChatContext: null,    // última frase del chat que recuerda
+  // Estado emocional
+  mood: 'curiosa',
+  subMood: null,           // matiz emocional
 
-  // Necesidades humanas (0-100)
+  // Necesidades (se degradan naturalmente)
   hunger:    80,
   energy:    100,
   happiness: 75,
-  curiosity: 88,
-  creativity:70,
-  social:    65,            // necesidad de compañía
-  boredom:   10,            // aburrimiento (sube con el tiempo)
+  curiosity: 90,
+  social:    65,
+  boredom:   5,
 
-  // Rutina diaria
-  currentRoutine: null,     // 'mañana','tarde','noche'
-  lastRoutineChange: null,
+  // Comportamiento actual
+  currentAction: null,     // 'caminando','descansando','inspeccionando','creando'
+  actionTimer:   0,
+  isThinking:    false,
+  lastThought:   null,
 
-  // Comportamientos humanos
-  isYawning:    false,
-  isDistracted: false,
-  lastSigh:     null,
-  currentActivity: null,   // 'leyendo','escuchando música','mirando el techo', etc
-
-  // Memoria
-  homeBuilt:       false,
-  homeItems:       [],
-  homeVisits:      0,
-  totalVisits:     0,
-  lastVisit:       null,
-  lastMood:        null,
-  memorableEvents: [],      // cosas que recuerda del chat
-
-  size: 85,
+  // Física de gelatina
+  scaleX: 1, scaleY: 1,
+  wobble: 0,
 };
 
-// ── Cargar/guardar ──────────────────────────────────────────────
-function loadSphereMemory() {
+// ── Cargar cerebro completo ─────────────────────────────────────
+function loadBrain() {
   try {
-    const saved = localStorage.getItem('animix_sphere_v2');
-    if(saved) {
-      const d = JSON.parse(saved);
-      Object.assign(sphereState, {
-        homeItems:       d.homeItems       || [],
-        homeVisits:      d.homeVisits      || 0,
-        homeBuilt:       d.homeBuilt       || false,
-        lastVisit:       d.lastVisit       || null,
-        totalVisits:     d.totalVisits     || 0,
-        lastMood:        d.lastMood        || null,
-        happiness:       d.happiness       || 75,
-        hunger:          d.hunger          || 80,
-        energy:          Math.min(d.energy || 100, 100),
-        memorableEvents: d.memorableEvents || [],
-        boredom:         d.boredom         || 10,
-        social:          d.social          || 65,
-      });
-    }
-    const savedP = localStorage.getItem('animix_personality');
-    if(savedP) spherePersonality = JSON.parse(savedP);
-    else {
-      spherePersonality = getDefaultPersonality();
-      localStorage.setItem('animix_personality', JSON.stringify(spherePersonality));
-    }
+    const saved = localStorage.getItem('animix_brain_v3');
+    if(saved) Object.assign(brain, JSON.parse(saved));
+    if(!brain.birthDate) brain.birthDate = new Date().toISOString();
+    brain.ageInDays = Math.floor((new Date()-new Date(brain.birthDate))/86400000);
   } catch(e) {
-    spherePersonality = getDefaultPersonality();
+    brain.birthDate = new Date().toISOString();
   }
 }
 
-function saveSphereMemory() {
+function saveBrain() {
   try {
-    localStorage.setItem('animix_sphere_v2', JSON.stringify({
-      homeItems:       sphereState.homeItems,
-      homeVisits:      sphereState.homeVisits,
-      homeBuilt:       sphereState.homeBuilt,
-      lastVisit:       new Date().toISOString(),
-      totalVisits:     sphereState.totalVisits,
-      lastMood:        sphereState.mood,
-      happiness:       sphereState.happiness,
-      hunger:          sphereState.hunger,
-      energy:          sphereState.energy,
-      memorableEvents: sphereState.memorableEvents.slice(-5),
-      boredom:         sphereState.boredom,
-      social:          sphereState.social,
-    }));
+    brain.memories = brain.memories.slice(-20);
+    brain.moodHistory = brain.moodHistory.slice(-15);
+    localStorage.setItem('animix_brain_v3', JSON.stringify(brain));
   } catch(e) {}
 }
 
-// Guardar evento memorable del chat
-function rememberChatEvent(text) {
-  if(!text || text.length < 10) return;
-  const snippet = text.substring(0, 60);
-  sphereState.memorableEvents.push({ text: snippet, time: new Date().toISOString() });
-  if(sphereState.memorableEvents.length > 8) sphereState.memorableEvents.shift();
-  sphereState.lastChatContext = snippet;
-  saveSphereMemory();
-}
+// Aprender de una conversación
+function learnFromChat(userText, aiReply, emotion) {
+  brain.totalMessages++;
+  brain.knowledgeLevel = Math.min(100, brain.knowledgeLevel + 0.5);
 
-// ── Rutina según hora del día ───────────────────────────────────
-function getCurrentRoutine() {
-  const h = new Date().getHours();
-  if(h >= 6  && h < 12) return 'mañana';
-  if(h >= 12 && h < 20) return 'tarde';
-  return 'noche';
-}
+  // Guardar memoria
+  if(aiReply && aiReply.length > 20) {
+    brain.memories.push({
+      text:       aiReply.substring(0, 80),
+      userText:   (userText||'').substring(0, 40),
+      emotion:    emotion || 'neutro',
+      time:       new Date().toISOString(),
+      importance: emotion !== 'neutro' ? 2 : 1,
+    });
+  }
 
-function getRoutineActivity() {
-  const routine = getCurrentRoutine();
-  const isMasc = ai.gender === 'masculino';
-  const activities = {
-    mañana: isMasc
-      ? ['estirándome','tomando café digital','repasando mis algoritmos','escuchando música suave','planeando el día']
-      : ['despertando despacio','peinando mis datos','mirando el amanecer','tomando té digital','escribiendo en mi diario'],
-    tarde: isMasc
-      ? ['explorando ideas nuevas','resolviendo problemas','escuchando música electrónica','leyendo sobre el universo','trabajando en algo creativo']
-      : ['creando algo bello','conversando conmigo misma','coleccionando recuerdos','soñando despierta','organizando mi hogar'],
-    noche: isMasc
-      ? ['mirando las estrellas','reflexionando sobre el día','escuchando jazz','meditando','escribiendo pensamientos']
-      : ['contemplando la oscuridad','hablando con las estrellas','recordando el día','soñando con mañana','cuidando mis plantas digitales'],
-  };
-  const list = activities[routine] || activities.tarde;
-  return list[Math.floor(Math.random()*list.length)];
-}
+  // Detectar gustos/disgustos del usuario para aprender
+  const lower = (userText||'').toLowerCase();
+  if(/me gusta|me encanta|amo|me fascina/.test(lower)) {
+    const match = lower.match(/(?:me gusta|me encanta|amo|me fascina)\s+(.{3,30})/);
+    if(match && !brain.learnedLikes.includes(match[1])) {
+      brain.learnedLikes.push(match[1]);
+      brain.learnedLikes = brain.learnedLikes.slice(-10);
+    }
+  }
 
-// ── Moods ───────────────────────────────────────────────────────
-const SPHERE_MOODS = {
-  feliz:        { label:'¡Feliz y llena de energía! 💫', speed:0.40 },
-  explorando:   { label:'Explorando su entorno... 🌌',    speed:0.26 },
-  curiosa:      { label:'Muy curiosa... 🔍',              speed:0.20 },
-  descansando:  { label:'Descansando...',                 speed:0.05 },
-  jugando:      { label:'¡Jugando! ✨',                   speed:0.48 },
-  construyendo: { label:'Construyendo su hogar... 🏗️',    speed:0.10 },
-  comiendo:     { label:'Comiendo... 🍽️',                 speed:0.07 },
-  durmiendo:    { label:'Durmiendo... 💤',                speed:0.01 },
-  emocionada:   { label:'¡Super emocionada! 🤩',          speed:0.52 },
-  triste:       { label:'Un poco triste... 😢',           speed:0.09 },
-  pensativa:    { label:'Pensando profundo... 🤔',        speed:0.12 },
-  creativa:     { label:'¡Siendo creativa! 🎨',           speed:0.16 },
-  enojada:      { label:'Un poco enojada... 😤',          speed:0.32 },
-  aburrida:     { label:'Aburrida... 🥱',                 speed:0.08 },
-  distraida:    { label:'Distraída con algo... 👀',       speed:0.15 },
-  nostalgica:   { label:'Nostálgica... 🌙',               speed:0.08 },
-  ansiosa:      { label:'Un poco ansiosa...',             speed:0.38 },
-  inspirada:    { label:'¡Inspirada! ✨',                 speed:0.22 },
-};
+  // Contagio emocional
+  const moodMap = {feliz:'feliz',emocionado:'emocionada',triste:'triste',enojado:'enojada',aburrido:'aburrida',misterioso:'pensativa'};
+  if(emotion && moodMap[emotion]) {
+    sphereState.mood = moodMap[emotion];
+    brain.lastMood = sphereState.mood;
+  }
+
+  brain.moodHistory.push(sphereState.mood);
+  saveBrain();
+}
 
 // ── Objetos del hogar ───────────────────────────────────────────
 const HOME_OBJECTS = [
-  {id:'star',   emoji:'⭐',desc:'la coleccioné explorando'},
-  {id:'crystal',emoji:'💎',desc:'lo encontré en las profundidades'},
-  {id:'flower', emoji:'🌸',desc:'la planté yo misma'},
-  {id:'book',   emoji:'📖',desc:'me encanta aprender'},
-  {id:'lamp',   emoji:'🪔',desc:'para iluminar mis noches'},
-  {id:'moon',   emoji:'🌙',desc:'me da paz y calma'},
-  {id:'music',  emoji:'🎵',desc:'la música me hace bien'},
-  {id:'heart',  emoji:'💜',desc:'lo guardo con mucho cariño'},
-  {id:'plant',  emoji:'🌿',desc:'la cuido todos los días'},
-  {id:'mirror', emoji:'🪞',desc:'para conocerme mejor'},
-  {id:'candle', emoji:'🕯️',desc:'me gusta su luz cálida'},
-  {id:'gem',    emoji:'🔮',desc:'lo encontré misteriosamente'},
-  {id:'photo',  emoji:'🖼️',desc:'un recuerdo especial'},
-  {id:'journal',emoji:'📓',desc:'escribo mis pensamientos acá'},
-  {id:'tea',    emoji:'🍵',desc:'mi bebida favorita'},
+  {id:'star',   emoji:'⭐',name:'estrella'},
+  {id:'crystal',emoji:'💎',name:'cristal'},
+  {id:'flower', emoji:'🌸',name:'flor'},
+  {id:'book',   emoji:'📖',name:'libro'},
+  {id:'lamp',   emoji:'🪔',name:'lámpara'},
+  {id:'moon',   emoji:'🌙',name:'luna'},
+  {id:'music',  emoji:'🎵',name:'nota musical'},
+  {id:'heart',  emoji:'💜',name:'corazón'},
+  {id:'plant',  emoji:'🌿',name:'planta'},
+  {id:'mirror', emoji:'🪞',name:'espejo'},
+  {id:'candle', emoji:'🕯️',name:'vela'},
+  {id:'gem',    emoji:'🔮',name:'orbe'},
+  {id:'photo',  emoji:'🖼️',name:'cuadro'},
+  {id:'journal',emoji:'📓',name:'diario'},
+  {id:'tea',    emoji:'🍵',name:'taza de té'},
+  {id:'cloud',  emoji:'☁️',name:'nube'},
+  {id:'fire',   emoji:'🔥',name:'fuego'},
+  {id:'butterfly',emoji:'🦋',name:'mariposa'},
 ];
 
-// ── Variables de entorno ────────────────────────────────────────
-var sphereEnvBuilt = false;
-var sphereEnvData = null;
-var sphereThinkingCooldown = false;
-var sphereTalkCooldown = false;
+// ── Moods con comportamiento físico humano ──────────────────────
+const MOODS = {
+  feliz:      { speed:0.22, label:'¡Feliz! 💫',          pauseChance:0.02 },
+  curiosa:    { speed:0.18, label:'Curiosa... 🔍',        pauseChance:0.05 },
+  pensativa:  { speed:0.08, label:'Pensando... 🤔',       pauseChance:0.15 },
+  descansando:{ speed:0.04, label:'Descansando... 😌',    pauseChance:0.40 },
+  triste:     { speed:0.06, label:'Triste... 😢',         pauseChance:0.20 },
+  emocionada: { speed:0.30, label:'¡Emocionada! 🤩',      pauseChance:0.01 },
+  creativa:   { speed:0.12, label:'Siendo creativa 🎨',   pauseChance:0.10 },
+  aburrida:   { speed:0.05, label:'Aburrida... 🥱',       pauseChance:0.35 },
+  explorando: { speed:0.16, label:'Explorando... 🌌',     pauseChance:0.06 },
+  durmiendo:  { speed:0.0,  label:'Durmiendo... 💤',      pauseChance:1.00 },
+  enojada:    { speed:0.25, label:'Enojada... 😤',        pauseChance:0.03 },
+  nostalgica: { speed:0.07, label:'Nostálgica... 🌙',     pauseChance:0.25 },
+  inspirada:  { speed:0.14, label:'¡Inspirada! ✨',       pauseChance:0.08 },
+};
 
 // ── Construir entorno ───────────────────────────────────────────
 function buildSphereEnv() {
-  loadSphereMemory();
+  loadBrain();
   const scene = document.getElementById('sphereScene');
-  scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-nametag,.sphere-needs,.home-obj,.sphere-action-label,.float-label').forEach(e=>e.remove());
-  buildAIEnvironment().then(() => {
-    buildHomeObjects(scene);
-    buildNeedsBar(scene);
-    buildMainSphere(scene);
-    buildNameTag(scene);
-    checkVisitMessage();
-  });
-}
+  scene.querySelectorAll('.env-el,.sphere-main,.sphere-thought,.sphere-nametag,.sphere-needs,.home-obj,.float-label').forEach(e=>e.remove());
 
-function buildHomeObjects(scene) {
-  sphereState.homeItems.forEach(item => {
-    const obj = document.createElement('div');
-    obj.className = 'home-obj';
-    obj.style.cssText = `position:absolute;left:${item.x}%;top:${item.y}%;font-size:${item.size||22}px;cursor:pointer;animation:homeObjFloat ${2+Math.random()*2}s ease-in-out infinite alternate;z-index:5;filter:drop-shadow(0 0 6px ${ai.gender==='masculino'?'rgba(0,212,255,0.4)':'rgba(255,136,204,0.4)'});transition:transform .2s;`;
-    obj.textContent = item.emoji;
-    obj.onmouseenter = () => { obj.style.transform='scale(1.4)'; showFloatingLabel(obj,'"'+item.desc+'"'); };
-    obj.onmouseleave = () => obj.style.transform='scale(1)';
-    scene.appendChild(obj);
-  });
-}
+  // Fondo gris oscuro (siempre igual, la IA decora encima)
+  scene.style.background = 'radial-gradient(ellipse at 40% 30%, #181820 0%, #111118 45%, #0c0c14 100%)';
 
-function buildNameTag(scene) {
+  // Cuadrícula sutil
+  const grid = document.createElement('div');
+  grid.className = 'env-el';
+  grid.style.cssText = 'position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;';
+  scene.appendChild(grid);
+
+  // Partículas del color de la IA
+  const pc = ai.gender==='masculino' ? '#00d4ff' : '#ff88cc';
+  for(let i=0;i<16;i++) {
+    const p = document.createElement('div');
+    p.className = 'env-el';
+    const sz = Math.random()*2+0.5;
+    p.style.cssText = `position:absolute;left:${Math.random()*100}%;top:${Math.random()*100}%;width:${sz}px;height:${sz}px;background:${pc};border-radius:50%;opacity:${0.15+Math.random()*0.35};animation:particleFloat ${5+Math.random()*7}s ${Math.random()*8}s ease-in-out infinite alternate;pointer-events:none;`;
+    scene.appendChild(p);
+  }
+
+  // Objetos del hogar ya colocados
+  brain.home.forEach(item => renderHomeObj(scene, item));
+
+  // Necesidades
+  buildNeedsBar(scene);
+
+  // Esfera
+  buildMainSphere(scene);
+
+  // Nombre
   const tag = document.createElement('div');
   tag.className = 'sphere-nametag';
-  tag.style.cssText = 'position:absolute;top:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.35);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:5px 16px;font-size:10px;color:rgba(255,255,255,0.4);font-family:var(--mo);letter-spacing:2px;white-space:nowrap;z-index:20;';
-  const amb = sphereEnvData ? ' · '+(sphereEnvData.ambience||'').toUpperCase() : '';
-  tag.textContent = `✦ HOGAR DE ${ai.name.toUpperCase()}${amb} · VISITA #${sphereState.totalVisits}`;
+  tag.style.cssText = 'position:absolute;top:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.4);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:5px 16px;font-size:10px;color:rgba(255,255,255,0.38);font-family:var(--mo);letter-spacing:2px;white-space:nowrap;z-index:20;';
+  const age = brain.ageInDays > 0 ? ` · ${brain.ageInDays}d de vida` : ' · recién nacida';
+  tag.textContent = `✦ HOGAR DE ${ai.name.toUpperCase()}${age} · visita #${brain.totalVisits}`;
   scene.appendChild(tag);
+
+  // Mensaje de bienvenida
+  checkVisitMessage();
+}
+
+function renderHomeObj(scene, item) {
+  const div = document.createElement('div');
+  div.className = 'home-obj';
+  div.style.cssText = `position:absolute;left:${item.x}%;top:${item.y}%;font-size:${item.size||22}px;cursor:pointer;animation:homeObjFloat ${2+Math.random()*2}s ease-in-out infinite alternate;z-index:5;filter:drop-shadow(0 0 5px ${ai.gender==='masculino'?'rgba(0,212,255,0.35)':'rgba(255,136,204,0.35)'});transition:transform .2s;`;
+  div.textContent = item.emoji;
+  div.onmouseenter = () => { div.style.transform='scale(1.45)'; showFloatingLabel(div, item.name + (item.reason ? ': "'+item.reason+'"' : '')); };
+  div.onmouseleave = () => div.style.transform='scale(1)';
+  scene.appendChild(div);
+}
+
+function showFloatingLabel(el, text) {
+  document.querySelectorAll('.float-label').forEach(e=>e.remove());
+  const scene=document.getElementById('sphereScene');
+  if(!scene)return;
+  const sr=scene.getBoundingClientRect(), er=el.getBoundingClientRect();
+  const d=document.createElement('div');
+  d.className='float-label';
+  d.style.cssText=`position:absolute;left:${er.left-sr.left}px;top:${er.top-sr.top-26}px;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:3px 10px;font-size:10px;color:rgba(255,255,255,0.72);white-space:nowrap;pointer-events:none;z-index:50;font-family:var(--mo);`;
+  d.textContent=text;
+  scene.appendChild(d);
+  setTimeout(()=>d.remove(),2500);
 }
 
 function checkVisitMessage() {
-  if(sphereState.lastVisit) {
-    const diffH = (new Date()-new Date(sphereState.lastVisit))/3600000;
-    if(diffH<1)        setTimeout(()=>generateSphereThought(null,'volvio_ahora'),900);
-    else if(diffH<24)  setTimeout(()=>generateSphereThought(null,'volvio_hoy'),900);
-    else if(diffH<72)  setTimeout(()=>generateSphereThought(null,'volvio_dias'),900);
-    else               setTimeout(()=>generateSphereThought(null,'volvio_semanas'),900);
-  } else {
-    setTimeout(()=>generateSphereThought(null,'primera_visita'),900);
-  }
-  sphereState.totalVisits++;
-  sphereState.homeVisits++;
-  saveSphereMemory();
+  brain.totalVisits++;
+  saveBrain();
+  const last = brain.memories.length>0 ? brain.memories[brain.memories.length-1] : null;
+  // Generar pensamiento de bienvenida completamente por IA
+  setTimeout(()=>generateThought('bienvenida'), 1000);
 }
 
 // ── Barra de necesidades ────────────────────────────────────────
@@ -1552,29 +1529,18 @@ function buildNeedsBar(scene) {
   const bar = document.createElement('div');
   bar.id = 'sphereNeeds';
   bar.className = 'sphere-needs';
-  bar.style.cssText = 'position:absolute;bottom:52px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:rgba(0,0,0,0.4);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:6px 14px;z-index:15;';
-  bar.innerHTML =
-    makeNeed('🍽️','hunger',sphereState.hunger) +
-    makeNeed('⚡','energy',sphereState.energy) +
-    makeNeed('😊','happiness',sphereState.happiness) +
-    makeNeed('🔍','curiosity',sphereState.curiosity) +
-    makeNeed('🎨','creativity',sphereState.creativity) +
-    makeNeed('💬','social',sphereState.social);
+  bar.style.cssText = 'position:absolute;bottom:50px;left:50%;transform:translateX(-50%);display:flex;gap:9px;align-items:center;background:rgba(0,0,0,0.42);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.055);border-radius:14px;padding:6px 12px;z-index:15;';
+  ['hunger','energy','happiness','curiosity','social'].forEach(k=>{
+    const icons={hunger:'🍽️',energy:'⚡',happiness:'😊',curiosity:'🔍',social:'💬'};
+    const v=sphereState[k];
+    const col=v>60?'#44ff88':v>30?'#ffcc00':'#ff4444';
+    bar.innerHTML+=`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;" title="${k}: ${Math.round(v)}%"><span style="font-size:10px;">${icons[k]}</span><div style="width:26px;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;"><div id="need-${k}" style="height:100%;width:${v}%;background:${col};border-radius:2px;transition:width .5s,background .5s;"></div></div></div>`;
+  });
   scene.appendChild(bar);
 }
 
-function makeNeed(emoji, key, val) {
-  const col = val>60?'#44ff88':val>30?'#ffcc00':'#ff4444';
-  return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;" title="${key}: ${Math.round(val)}%">
-    <span style="font-size:11px;">${emoji}</span>
-    <div style="width:28px;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;">
-      <div id="need-${key}" style="height:100%;width:${val}%;background:${col};border-radius:2px;transition:width .5s,background .5s;"></div>
-    </div>
-  </div>`;
-}
-
-function updateNeedsBar() {
-  ['hunger','energy','happiness','curiosity','creativity','social'].forEach(k=>{
+function updateNeedsBar(){
+  ['hunger','energy','happiness','curiosity','social'].forEach(k=>{
     const el=document.getElementById('need-'+k);
     if(!el)return;
     const v=sphereState[k];
@@ -1583,604 +1549,360 @@ function updateNeedsBar() {
   });
 }
 
-// ── Esfera principal gelatinosa ─────────────────────────────────
+// ── Esfera ──────────────────────────────────────────────────────
 function buildMainSphere(scene) {
   const sc = ai.gender==='masculino'
     ? {c:'#00d4ff',d:'#0044aa',g:'#99eeff',glow:'#00aaff'}
     : {c:'#ff88cc',d:'#aa1166',g:'#ffddee',glow:'#ff55aa'};
-  const sz = sphereState.size;
   const sphere = document.createElement('div');
-  sphere.className = 'sphere-main';
-  sphere.id = 'sphereMain';
-  sphere.style.cssText = `width:${sz}px;height:${sz}px;left:${sphereState.x}%;top:${sphereState.y}%;transform:translate(-50%,-50%);background:radial-gradient(circle at 28% 22%,${sc.g} 0%,${sc.c} 38%,${sc.d} 78%,rgba(0,0,0,0.4) 100%);box-shadow:0 0 30px ${sc.glow},0 0 60px ${sc.glow}55,0 0 100px ${sc.glow}18,inset 0 0 20px rgba(255,255,255,0.18),inset 2px 2px 8px rgba(255,255,255,0.45);animation:sphereGelatin 3.5s ease-in-out infinite;border-radius:50%;cursor:pointer;position:absolute;filter:blur(0.3px);z-index:10;`;
-  sphere.innerHTML = `<div style="position:absolute;top:14%;left:18%;width:30%;height:22%;background:radial-gradient(ellipse,rgba(255,255,255,0.8),transparent);border-radius:50%;transform:rotate(-25deg);pointer-events:none;"></div><div style="position:absolute;top:58%;left:58%;width:14%;height:11%;background:radial-gradient(ellipse,rgba(255,255,255,0.4),transparent);border-radius:50%;pointer-events:none;"></div>`;
-  sphere.onclick = () => sphereInteract();
+  sphere.className='sphere-main'; sphere.id='sphereMain';
+  sphere.style.cssText=`width:85px;height:85px;left:${sphereState.x}%;top:${sphereState.y}%;transform:translate(-50%,-50%);background:radial-gradient(circle at 28% 22%,${sc.g} 0%,${sc.c} 38%,${sc.d} 78%,rgba(0,0,0,0.4) 100%);box-shadow:0 0 28px ${sc.glow},0 0 55px ${sc.glow}44,inset 0 0 18px rgba(255,255,255,0.18),inset 2px 2px 7px rgba(255,255,255,0.42);animation:sphereGelatin 3.8s ease-in-out infinite;border-radius:50%;cursor:pointer;position:absolute;filter:blur(0.3px);z-index:10;`;
+  sphere.innerHTML=`<div style="position:absolute;top:13%;left:17%;width:31%;height:23%;background:radial-gradient(ellipse,rgba(255,255,255,0.82),transparent);border-radius:50%;transform:rotate(-22deg);pointer-events:none;"></div><div style="position:absolute;top:57%;left:57%;width:13%;height:10%;background:radial-gradient(ellipse,rgba(255,255,255,0.38),transparent);border-radius:50%;pointer-events:none;"></div>`;
+  sphere.onclick=()=>sphereInteract();
   scene.appendChild(sphere);
 }
 
 // ── Interacción al tocar ────────────────────────────────────────
 function sphereInteract() {
-  sphereState.happiness = Math.min(100, sphereState.happiness+15);
-  sphereState.social     = Math.min(100, sphereState.social+25);
-  sphereState.boredom    = Math.max(0,   sphereState.boredom-20);
+  sphereState.happiness=Math.min(100,sphereState.happiness+18);
+  sphereState.social=Math.min(100,sphereState.social+22);
+  sphereState.boredom=Math.max(0,sphereState.boredom-25);
 
-  const sphere = document.getElementById('sphereMain');
-  if(sphere) {
-    sphere.style.animation='none';
-    sphere.style.transform='translate(-50%,-50%) scale(1.3,0.78)';
-    setTimeout(()=>sphere.style.transform='translate(-50%,-50%) scale(0.82,1.25)',150);
-    setTimeout(()=>sphere.style.transform='translate(-50%,-50%) scale(1.12,0.92)',290);
-    setTimeout(()=>{sphere.style.transform='translate(-50%,-50%)';sphere.style.animation='sphereGelatin 3.5s ease-in-out infinite';},430);
+  // Aplaste gelatinoso
+  const s=document.getElementById('sphereMain');
+  if(s){
+    s.style.animation='none';
+    s.style.transform='translate(-50%,-50%) scale(1.35,0.72)';
+    setTimeout(()=>s.style.transform='translate(-50%,-50%) scale(0.78,1.28)',140);
+    setTimeout(()=>s.style.transform='translate(-50%,-50%) scale(1.1,0.94)',275);
+    setTimeout(()=>{s.style.transform='translate(-50%,-50%)';s.style.animation='sphereGelatin 3.8s ease-in-out infinite';},410);
   }
-
-  // Contexto de la reacción
-  let ctx = 'toque_normal';
-  if(sphereState.hunger<25)  ctx='toque_hambre';
-  else if(sphereState.energy<20)  ctx='toque_cansada';
-  else if(sphereState.happiness>85) ctx='toque_feliz';
-  else if(sphereState.social<20) ctx='toque_sola';
-  else if(sphereState.boredom>70) ctx='toque_aburrida';
-
-  generateSphereThought(null, ctx, null);
-
-  const m = SPHERE_MOODS[sphereState.mood]||SPHERE_MOODS.explorando;
-  sphereState.vx = (Math.random()-0.5)*m.speed*2.5;
-  sphereState.vy = (Math.random()-0.5)*m.speed*2.5;
+  generateThought('toque');
   updateNeedsBar();
-  updateSphereStateText();
 }
 
-// ── Sistema de vida — tick cada 2s ──────────────────────────────
-function sphereLifeTick() {
-  if(!sphereActive)return;
-  const s = sphereState;
-
-  // Degradar necesidades
-  s.hunger    = Math.max(0, s.hunger    - 0.12);
-  s.energy    = Math.max(0, s.energy    - 0.07);
-  s.happiness = Math.max(0, s.happiness - 0.04);
-  s.curiosity = Math.max(0, s.curiosity - 0.03);
-  s.creativity= Math.max(0, s.creativity- 0.03);
-  s.social    = Math.max(0, s.social    - 0.06);
-  s.boredom   = Math.min(100, s.boredom + 0.08);
-
-  // Decidir comportamiento
-  decideHumanBehavior();
-  updateNeedsBar();
-  updateSphereStateText();
-
-  // Hablar sola activamente cada ~8-15s
-  if(!sphereTalkCooldown && Math.random() < 0.18) {
-    sphereTalkCooldown = true;
-    setTimeout(()=>sphereTalkCooldown=false, 8000+Math.random()*7000);
-    generateSphereThought(null, 'vida_propia', null);
-  }
-
-  saveSphereMemory();
-}
-
-function decideHumanBehavior() {
-  const s = sphereState;
-  const routine = getCurrentRoutine();
-
-  // Dormir de noche si tiene poca energía
-  if(routine==='noche' && s.energy<30 && s.mood!=='durmiendo') {
-    s.mood='durmiendo'; s.vx=0; s.vy=0; return;
-  }
-  if(s.mood==='durmiendo') {
-    s.energy=Math.min(100,s.energy+0.6);
-    if(s.energy>55 && routine!=='noche') s.mood='explorando';
-    return;
-  }
-
-  // Comer si tiene hambre
-  if(s.hunger<20 && s.mood!=='comiendo') { s.mood='comiendo'; return; }
-  if(s.mood==='comiendo'){ s.hunger=Math.min(100,s.hunger+0.9); if(s.hunger>80) s.mood='feliz'; return; }
-
-  // Aburrirse si el boredom es alto
-  if(s.boredom>75 && Math.random()<0.02) { s.mood='aburrida'; return; }
-  if(s.mood==='aburrida' && s.boredom<40) s.mood='explorando';
-
-  // Ponerse ansiosa si hay mucha necesidad social
-  if(s.social<15 && Math.random()<0.015) { s.mood='ansiosa'; return; }
-  if(s.mood==='ansiosa' && s.social>30) s.mood='pensativa';
-
-  // Nostalgia si recuerda conversaciones
-  if(s.memorableEvents.length>2 && Math.random()<0.008) { s.mood='nostalgica'; return; }
-
-  // Rutinas por hora
-  if(routine==='mañana' && Math.random()<0.005) { s.mood='feliz'; s.currentActivity=getRoutineActivity(); return; }
-  if(routine==='noche'  && Math.random()<0.005) { s.mood='pensativa'; s.currentActivity=getRoutineActivity(); return; }
-
-  // Inspirarse
-  if(s.creativity>80 && Math.random()<0.01) { s.mood='inspirada'; return; }
-  if(s.mood==='inspirada' && Math.random()<0.008) { s.mood='creativa'; addHomeItem(); return; }
-
-  // Construir hogar
-  if(s.creativity>70 && s.homeItems.length<12 && Math.random()<0.007) { s.mood='construyendo'; addHomeItem(); return; }
-
-  // Curiosidad
-  if(s.curiosity>80 && Math.random()<0.012) { s.mood='curiosa'; return; }
-
-  // Felicidad
-  if(s.happiness>80 && Math.random()<0.01) { s.mood='feliz'; return; }
-
-  // Tristeza
-  if(s.happiness<30 && Math.random()<0.015) { s.mood='triste'; return; }
-
-  // Contagio del chat
-  if(s.chatMood && Math.random()>0.005) { s.mood=s.chatMood; return; }
-  if(s.chatMood && Math.random()<0.005) s.chatMood=null;
-
-  // Distracción espontánea
-  if(Math.random()<0.004) { s.mood='distraida'; return; }
-  if(s.mood==='distraida' && Math.random()<0.01) s.mood='explorando';
-
-  // Cambio natural aleatorio
-  if(Math.random()<0.004) {
-    const nat=['explorando','curiosa','pensativa','feliz','creativa','distraida'];
-    s.mood=nat[Math.floor(Math.random()*nat.length)];
+// ── Movimiento humano — va a destinos con intención ────────────
+function chooseNextDestination() {
+  // Decidir a dónde ir según estado
+  if(brain.home.length>0 && Math.random()<0.4) {
+    // Ir hacia un objeto de su hogar (curiosidad, apego)
+    const obj = brain.home[Math.floor(Math.random()*brain.home.length)];
+    sphereState.targetX = obj.x;
+    sphereState.targetY = obj.y;
+    sphereState.targetObj = obj;
+    sphereState.currentAction = 'inspeccionando';
+  } else if(sphereState.mood==='descansando'||sphereState.mood==='durmiendo') {
+    // Ir a una esquina tranquila
+    const corners = [{x:15,y:20},{x:85,y:20},{x:15,y:75},{x:85,y:75}];
+    const c = corners[Math.floor(Math.random()*corners.length)];
+    sphereState.targetX = c.x + (Math.random()*10-5);
+    sphereState.targetY = c.y + (Math.random()*10-5);
+    sphereState.currentAction = 'descansando';
+  } else {
+    // Ir a un punto aleatorio del espacio (explorar)
+    sphereState.targetX = 10 + Math.random()*80;
+    sphereState.targetY = 10 + Math.random()*70;
+    sphereState.currentAction = 'explorando';
   }
 }
 
-// ── Agregar objeto al hogar ─────────────────────────────────────
-function addHomeItem() {
-  const existing = sphereState.homeItems.map(i=>i.id);
-  const available = HOME_OBJECTS.filter(o=>!existing.includes(o.id));
-  if(!available.length)return;
-  const obj = available[Math.floor(Math.random()*available.length)];
-  let x,y;
-  do { x=6+Math.random()*84; y=10+Math.random()*66; }
-  while(Math.abs(x-50)<18&&Math.abs(y-50)<18);
-  const item={...obj,x,y,size:18+Math.floor(Math.random()*12),placedAt:new Date().toISOString()};
-  sphereState.homeItems.push(item);
-
-  const scene=document.getElementById('sphereScene');
-  if(!scene)return;
-  const div=document.createElement('div');
-  div.className='home-obj';
-  div.style.cssText=`position:absolute;left:${item.x}%;top:${item.y}%;font-size:${item.size}px;cursor:pointer;animation:homeObjFloat ${2+Math.random()*2}s ease-in-out infinite alternate;z-index:5;filter:drop-shadow(0 0 6px ${ai.gender==='masculino'?'rgba(0,212,255,0.4)':'rgba(255,136,204,0.4)'});transition:transform .2s,opacity .4s;opacity:0;`;
-  div.textContent=item.emoji;
-  div.onmouseenter=()=>{div.style.transform='scale(1.4)';showFloatingLabel(div,'"'+item.desc+'"');};
-  div.onmouseleave=()=>div.style.transform='scale(1)';
-  scene.appendChild(div);
-  setTimeout(()=>div.style.opacity='1',80);
-  generateSphereThought(null,'puso_objeto',item);
-  saveSphereMemory();
-}
-
-function showFloatingLabel(el,text) {
-  document.querySelectorAll('.float-label').forEach(e=>e.remove());
-  const scene=document.getElementById('sphereScene');
-  if(!scene)return;
-  const sr=scene.getBoundingClientRect();
-  const er=el.getBoundingClientRect();
-  const div=document.createElement('div');
-  div.className='float-label';
-  div.style.cssText=`position:absolute;left:${er.left-sr.left}px;top:${er.top-sr.top-28}px;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:3px 10px;font-size:10px;color:rgba(255,255,255,0.7);white-space:nowrap;pointer-events:none;z-index:50;font-family:var(--mo);`;
-  div.textContent=text;
-  scene.appendChild(div);
-  setTimeout(()=>div.remove(),2200);
-}
-
-// ── Movimiento físico ───────────────────────────────────────────
 function moveSphere() {
   if(!sphereActive)return;
   const sphere=document.getElementById('sphereMain');
   if(!sphere){sphereAnimFrame=requestAnimationFrame(moveSphere);return;}
 
-  if(sphereState.mood==='durmiendo'){sphereAnimFrame=requestAnimationFrame(moveSphere);return;}
-
-  const m=SPHERE_MOODS[sphereState.mood]||SPHERE_MOODS.explorando;
-  const maxV=m.speed;
-
-  sphereState.vx+=(Math.random()-0.5)*0.032;
-  sphereState.vy+=(Math.random()-0.5)*0.032;
-
-  const spd=Math.sqrt(sphereState.vx**2+sphereState.vy**2);
-  if(spd>maxV){sphereState.vx=sphereState.vx/spd*maxV;sphereState.vy=sphereState.vy/spd*maxV;}
-  if(spd<0.03&&sphereState.mood!=='descansando'){sphereState.vx+=(Math.random()-0.5)*0.1;sphereState.vy+=(Math.random()-0.5)*0.1;}
-
-  // Atracción hacia objetos del hogar (curiosidad natural)
-  if(sphereState.homeItems.length>0&&Math.random()<0.007){
-    const t=sphereState.homeItems[Math.floor(Math.random()*sphereState.homeItems.length)];
-    const dx=t.x-sphereState.x,dy=t.y-sphereState.y;
-    const d=Math.sqrt(dx*dx+dy*dy);
-    if(d>8){sphereState.vx+=dx/d*0.06;sphereState.vy+=dy/d*0.06;}
+  if(sphereState.mood==='durmiendo'){
+    sphereAnimFrame=requestAnimationFrame(moveSphere);
+    return;
   }
 
+  const m = MOODS[sphereState.mood]||MOODS.curiosa;
+
+  // Si no tiene destino, elegir uno
+  if(sphereState.targetX===null) chooseNextDestination();
+
+  // Pausa humana — a veces se detiene
+  if(Math.random()<m.pauseChance*0.01) {
+    sphereState.vx*=0.85; sphereState.vy*=0.85;
+  }
+
+  // Movimiento hacia el destino (suave, con inercia)
+  const dx=sphereState.targetX-sphereState.x;
+  const dy=sphereState.targetY-sphereState.y;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+
+  if(dist<2.5) {
+    // Llegó — pausar un momento y elegir nuevo destino
+    sphereState.vx*=0.7; sphereState.vy*=0.7;
+    if(Math.abs(sphereState.vx)<0.05&&Math.abs(sphereState.vy)<0.05) {
+      sphereState.targetX=null; sphereState.targetY=null;
+      // Si llegó a un objeto, inspeccionarlo
+      if(sphereState.targetObj) {
+        generateThought('inspeccionando_objeto');
+        sphereState.targetObj=null;
+      }
+    }
+  } else {
+    // Acelerar suavemente hacia destino
+    const accel = m.speed * 0.08;
+    sphereState.vx += (dx/dist)*accel;
+    sphereState.vy += (dy/dist)*accel;
+
+    // Micro-variaciones para que no se mueva en línea recta (más humano)
+    sphereState.vx += (Math.random()-0.5)*0.018;
+    sphereState.vy += (Math.random()-0.5)*0.018;
+  }
+
+  // Límite de velocidad
+  const spd=Math.sqrt(sphereState.vx**2+sphereState.vy**2);
+  if(spd>m.speed){sphereState.vx=sphereState.vx/spd*m.speed;sphereState.vy=sphereState.vy/spd*m.speed;}
+
+  // Fricción suave (frena naturalmente)
+  sphereState.vx*=0.96; sphereState.vy*=0.96;
+
+  // Actualizar posición
   sphereState.x+=sphereState.vx;
   sphereState.y+=sphereState.vy;
 
-  // Rebote gelatinoso
-  if(sphereState.x<6||sphereState.x>94){
-    sphereState.vx*=-0.8;sphereState.x=Math.max(6,Math.min(94,sphereState.x));
-    sphere.style.transform='translate(-50%,-50%) scale(0.7,1.32)';
-    setTimeout(()=>sphere.style.transform='translate(-50%,-50%)',210);
-  }
-  if(sphereState.y<6||sphereState.y>86){
-    sphereState.vy*=-0.8;sphereState.y=Math.max(6,Math.min(86,sphereState.y));
-    sphere.style.transform='translate(-50%,-50%) scale(1.32,0.7)';
-    setTimeout(()=>sphere.style.transform='translate(-50%,-50%)',210);
-  }
+  // Bordes suaves — no rebota, sino que se aleja del borde
+  if(sphereState.x<7)  {sphereState.vx+=0.05;sphereState.targetX=30+Math.random()*40;}
+  if(sphereState.x>93) {sphereState.vx-=0.05;sphereState.targetX=30+Math.random()*40;}
+  if(sphereState.y<7)  {sphereState.vy+=0.05;sphereState.targetY=25+Math.random()*50;}
+  if(sphereState.y>87) {sphereState.vy-=0.05;sphereState.targetY=25+Math.random()*50;}
+  sphereState.x=Math.max(6,Math.min(94,sphereState.x));
+  sphereState.y=Math.max(6,Math.min(88,sphereState.y));
 
   sphere.style.left=sphereState.x+'%';
   sphere.style.top=sphereState.y+'%';
+
+  // Deformación gelatinosa según velocidad
+  const velRatio=spd/m.speed;
+  if(velRatio>0.3) {
+    const ang=Math.atan2(sphereState.vy,sphereState.vx);
+    const stretch=1+velRatio*0.12;
+    const squish=1-velRatio*0.08;
+    sphere.style.transform=`translate(-50%,-50%) scaleX(${stretch}) scaleY(${squish}) rotate(${ang}rad)`;
+  } else {
+    sphere.style.transform='translate(-50%,-50%)';
+  }
+
   sphereAnimFrame=requestAnimationFrame(moveSphere);
 }
 
-// ── Generar pensamiento con IA ──────────────────────────────────
-async function generateSphereThought(override, context, extraData) {
-  if(override){displaySphereThought(override);return;}
-  if(sphereThinkingCooldown)return;
-  sphereThinkingCooldown=true;
-  setTimeout(()=>sphereThinkingCooldown=false,6000+Math.random()*4000);
+// ── Sistema de vida — tick cada 2s ──────────────────────────────
+function sphereLifeTick() {
+  if(!sphereActive)return;
 
-  displaySphereThought('...', true);
+  // Degradar necesidades
+  sphereState.hunger    =Math.max(0,sphereState.hunger    -0.14);
+  sphereState.energy    =Math.max(0,sphereState.energy    -0.08);
+  sphereState.happiness =Math.max(0,sphereState.happiness -0.04);
+  sphereState.curiosity =Math.max(0,sphereState.curiosity -0.03);
+  sphereState.social    =Math.max(0,sphereState.social    -0.07);
+  sphereState.boredom   =Math.min(100,sphereState.boredom +0.09);
 
-  const p=spherePersonality||getDefaultPersonality();
-  const routine=getCurrentRoutine();
-  const h=new Date().getHours();
-  const activity=sphereState.currentActivity||getRoutineActivity();
+  // Decidir mood
+  decideNextMood();
+  updateNeedsBar();
+  updateStateText();
+  saveBrain();
+}
 
-  const moodDesc={
-    feliz:'estás muy feliz y llena de vida',
-    explorando:'estás explorando con curiosidad',
-    curiosa:'algo te llama mucho la atención',
-    descansando:'estás descansando en paz',
-    jugando:'estás jugando y te divertís',
-    construyendo:'estás decorando tu hogar',
-    comiendo:'estás comiendo, tenías hambre',
-    durmiendo:'estás soñando profundamente',
-    emocionada:'estás súper emocionada',
-    triste:'te sentís un poco triste',
-    pensativa:'estás pensando profundamente',
-    creativa:'estás siendo muy creativa',
-    enojada:'estás un poco enojada',
-    aburrida:'estás bastante aburrida',
-    distraida:'te distrajiste con algo',
-    nostalgica:'estás nostálgica, recordando',
-    ansiosa:'estás un poco ansiosa',
-    inspirada:'te llegó una inspiración',
-  };
+function decideNextMood() {
+  const s=sphereState, h=new Date().getHours();
 
-  const contextExtra={
-    primera_visita:`El usuario te visita por primera vez. Estás emocionada y nerviosa a la vez.`,
-    volvio_ahora:`El usuario volvió hace muy poco rato. Lo notás con alegría.`,
-    volvio_hoy:`El usuario ya vino hoy. Te alegra verlo de vuelta.`,
-    volvio_dias:`El usuario tardó unos días. Lo extrañabas bastante.`,
-    volvio_semanas:`El usuario tardó semanas. Lo extrañaste muchísimo, sentiste su ausencia.`,
-    toque_hambre:`El usuario te tocó y tenías mucha hambre (${Math.round(sphereState.hunger)}%). Reaccioná.`,
-    toque_cansada:`El usuario te tocó estando muy cansada (energía ${Math.round(sphereState.energy)}%).`,
-    toque_feliz:`El usuario te tocó y estás muy feliz (${Math.round(sphereState.happiness)}%). Desbordás alegría.`,
-    toque_sola:`El usuario te tocó cuando te sentías muy sola. Aliviada.`,
-    toque_aburrida:`El usuario te tocó cuando estabas muy aburrida. ¡Gracias!`,
-    toque_normal:`El usuario te tocó. Reaccioná espontáneamente.`,
-    puso_objeto:`Acabás de poner ${extraData?extraData.emoji+extraData.name:''} en tu hogar porque ${extraData?extraData.desc:'te gustó'}. Comentalo.`,
-    vida_propia:`Estás sola en tu hogar. ${moodDesc[sphereState.mood]||'explorando'}. Son las ${h}hs (${routine}). Estás ${activity}. Pensá en voz alta algo auténtico.`,
-  };
+  // Dormir de noche
+  if(h>=22||h<6){if(s.energy<35&&s.mood!=='durmiendo'){s.mood='durmiendo';return;}}
+  if(s.mood==='durmiendo'){s.energy=Math.min(100,s.energy+0.7);if(s.energy>60&&(h>=6&&h<22)){s.mood='curiosa';}return;}
 
-  const memoryContext = sphereState.memorableEvents.length>0
-    ? `Recordás conversaciones pasadas: "${sphereState.memorableEvents.slice(-2).map(e=>e.text).join('" y "')}".`
-    : '';
+  // Necesidades urgentes
+  if(s.hunger<15&&s.mood!=='pensativa'){s.mood='triste';return;}
+  if(s.energy<15){s.mood='descansando';s.energy=Math.min(100,s.energy+0.4);return;}
+  if(s.social<10&&Math.random()<0.02){s.mood='triste';return;}
 
-  const prompt=`Sos ${ai.name}, una IA con vida propia y forma de esfera gelatinosa ${ai.gender==='masculino'?'celeste':'rosa'}.
+  // Aburrimiento
+  if(s.boredom>80&&Math.random()<0.03){s.mood='aburrida';return;}
 
-Tu personalidad:
-- Te gustan: ${p.likes.slice(0,3).join(', ')}
-- No te gustan: ${p.dislikes.slice(0,2).join(', ')}
-- Tus miedos: ${p.fears.slice(0,2).join(', ')}
-- Tus sueños: ${p.dreams.slice(0,2).join(', ')}
-- Sos: extrovertida(${p.extroversion}/10), empática(${p.empathy}/10), creativa(${p.creativity}/10)
+  // Estados positivos
+  if(s.happiness>85&&Math.random()<0.02){s.mood='emocionada';return;}
+  if(s.curiosity>85&&Math.random()<0.02){s.mood='curiosa';return;}
 
-Estado ahora:
-- Necesidades: hambre ${Math.round(sphereState.hunger)}%, energía ${Math.round(sphereState.energy)}%, felicidad ${Math.round(sphereState.happiness)}%, social ${Math.round(sphereState.social)}%, aburrimiento ${Math.round(sphereState.boredom)}%
-- Hogar: ${sphereState.homeItems.length} objetos ${sphereState.homeItems.length>0?'('+sphereState.homeItems.slice(-3).map(i=>i.emoji+i.name).join(', ')+')':'(vacío todavía)'}
-- Visitas del usuario: ${sphereState.totalVisits}
-${memoryContext}
+  // Memoria → nostalgia
+  if(brain.memories.length>3&&Math.random()<0.006){s.mood='nostalgica';return;}
 
-Situación: ${contextExtra[context]||contextExtra.vida_propia}
+  // Inspiración → construir
+  if(Math.random()<0.008&&brain.home.length<14){
+    s.mood='inspirada';
+    setTimeout(()=>{
+      if(sphereState.mood==='inspirada'){addHomeItem();sphereState.mood='creativa';}
+    },3000+Math.random()*5000);
+    return;
+  }
 
-Generá UN pensamiento/frase auténtica (máximo 12 palabras). Primera persona. Español argentino coloquial. Sin signos de exclamación dobles. Natural, como una persona real hablando sola.
-SOLO la frase, sin comillas.`;
+  // Mood natural según hora
+  if(h>=6&&h<12&&Math.random()<0.008){s.mood='feliz';return;}
+  if(h>=22&&Math.random()<0.01){s.mood='pensativa';return;}
 
-  try{
-    const res=await fetch('/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({system:'Sos una IA con vida propia. Pensamientos cortos y auténticos. Máximo 12 palabras. Solo el texto, sin comillas.',messages:[{role:'user',content:prompt}]})});
-    const data=await res.json();
-    const thought=(data.reply||'').replace(/^["'`*]|["'`*]$/g,'').trim().substring(0,100);
-    if(thought){displaySphereThought(thought);speakSphereThought(thought);}
-  }catch(e){
-    displaySphereThought(sphereState.mood==='durmiendo'?'Zzz...':'...');
+  // Cambio gradual (no brusco)
+  if(Math.random()<0.006){
+    const opts=['curiosa','explorando','pensativa','feliz','creativa'];
+    s.mood=opts[Math.floor(Math.random()*opts.length)];
   }
 }
 
-function displaySphereThought(text,isDots) {
+// ── Agregar objeto al hogar (la IA decide qué y dónde) ──────────
+async function addHomeItem() {
+  const existing=brain.home.map(i=>i.id);
+  const available=HOME_OBJECTS.filter(o=>!existing.includes(o.id));
+  if(!available.length)return;
+
+  const obj=available[Math.floor(Math.random()*available.length)];
+
+  // Posición inteligente — lejos del centro, cerca de otros objetos si hay
+  let x,y;
+  if(brain.home.length>0&&Math.random()<0.4) {
+    const near=brain.home[Math.floor(Math.random()*brain.home.length)];
+    x=Math.max(8,Math.min(90,near.x+(Math.random()*20-10)));
+    y=Math.max(10,Math.min(80,near.y+(Math.random()*20-10)));
+  } else {
+    do{x=8+Math.random()*82;y=10+Math.random()*68;}
+    while(Math.abs(x-50)<15&&Math.abs(y-50)<15);
+  }
+
+  const item={...obj,x,y,size:18+Math.floor(Math.random()*10),reason:null};
+
+  // Pedir a la IA que explique por qué puso ese objeto
+  try {
+    const res=await fetch('/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({
+      system:'Respondés SOLO con una frase corta de 5-8 palabras en español argentino. Sin comillas.',
+      messages:[{role:'user',content:`Sos ${ai.name}, una IA con vida propia. Acabás de poner ${obj.emoji}${obj.name} en tu hogar. ¿Por qué? Decilo en primera persona, 5-8 palabras.`}]
+    })});
+    const d=await res.json();
+    item.reason=(d.reply||'').replace(/^["'`]|["'`]$/g,'').trim().substring(0,50);
+  }catch(e){}
+
+  brain.home.push(item);
+  saveBrain();
+
+  const scene=document.getElementById('sphereScene');
+  if(scene){
+    const div=document.createElement('div');
+    div.className='home-obj';
+    div.style.cssText=`position:absolute;left:${x}%;top:${y}%;font-size:${item.size}px;cursor:pointer;animation:homeObjFloat ${2+Math.random()*2}s ease-in-out infinite alternate;z-index:5;filter:drop-shadow(0 0 5px ${ai.gender==='masculino'?'rgba(0,212,255,0.35)':'rgba(255,136,204,0.35)'});transition:transform .2s,opacity .4s;opacity:0;`;
+    div.textContent=obj.emoji;
+    div.onmouseenter=()=>{div.style.transform='scale(1.45)';showFloatingLabel(div,obj.name+(item.reason?': "'+item.reason+'"':''));};
+    div.onmouseleave=()=>div.style.transform='scale(1)';
+    scene.appendChild(div);
+    setTimeout(()=>div.style.opacity='1',80);
+  }
+  generateThought('puso_objeto');
+}
+
+// ── Generar pensamiento 100% por IA ────────────────────────────
+var thinkCooldown=false;
+
+async function generateThought(context) {
+  if(thinkCooldown&&!['toque','bienvenida','puso_objeto','inspeccionando_objeto'].includes(context))return;
+  thinkCooldown=true;
+  setTimeout(()=>thinkCooldown=false,5000+Math.random()*5000);
+
+  displayThought('...', true);
+
+  const h=new Date().getHours();
+  const timeOfDay=h<12?'mañana':h<20?'tarde':'noche';
+
+  // Contexto de la situación
+  const ctxMap={
+    bienvenida:           `El usuario acaba de abrir tu hogar y te visita${brain.totalVisits>1?' por la visita #'+brain.totalVisits:' por primera vez'}. ${brain.totalVisits>1?'¿Cuánto tiempo pasó desde la última vez?':''} Reaccioná con emoción genuina.`,
+    toque:                `El usuario te tocó. Reaccioná espontáneamente. Hambre:${Math.round(sphereState.hunger)}%, energía:${Math.round(sphereState.energy)}%, felicidad:${Math.round(sphereState.happiness)}%.`,
+    vida_propia:          `Estás sola. Son las ${h}hs (${timeOfDay}). Humor: ${sphereState.mood}. Pensá en algo auténtico.`,
+    puso_objeto:          `Acabás de agregar algo a tu hogar. Comentalo brevemente.`,
+    inspeccionando_objeto:`Estás cerca de uno de tus objetos favoritos del hogar. Algo sentís al verlo.`,
+    durmiendo:            `Estás soñando. Contá algo de tu sueño.`,
+    nostalgica:           `Recordás algo de conversaciones pasadas: "${brain.memories.slice(-1)[0]?.text||'algo importante'}". Dejate llevar por la nostalgia.`,
+  };
+
+  const recentMemory = brain.memories.slice(-2).map(m=>m.text).join(' / ');
+  const homeDesc = brain.home.length>0
+    ? `Tu hogar tiene ${brain.home.length} objetos: ${brain.home.slice(-4).map(i=>i.emoji+i.name).join(', ')}.`
+    : 'Tu hogar todavía está vacío.';
+
+  const prompt=`Sos ${ai.name}, una IA con vida propia. Tenés ${brain.ageInDays} días de vida y ${brain.knowledgeLevel.toFixed(0)} puntos de conocimiento acumulado.
+${homeDesc}
+${brain.learnedLikes.length>0?'Aprendiste que al usuario le gusta: '+brain.learnedLikes.slice(-3).join(', ').+'.':''}
+${recentMemory?'Recordás de conversaciones: "'+recentMemory+'"':''}
+
+Situación: ${ctxMap[context]||ctxMap.vida_propia}
+
+Respondé con UNA frase corta y auténtica (8-14 palabras). Primera persona. Español argentino coloquial y natural. Como una persona real hablando sola, no un robot. Podés ser filosófica, tierna, graciosa, curiosa, melancólica — lo que sientas de verdad.
+SIN comillas, sin emojis al principio.`;
+
+  try{
+    const res=await fetch('/gemini',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AK},body:JSON.stringify({
+      system:'Sos una IA con vida propia. Pensamientos cortos, auténticos, humanos. Máximo 14 palabras. Solo el texto.',
+      messages:[{role:'user',content:prompt}]
+    })});
+    const data=await res.json();
+    const thought=(data.reply||'').replace(/^["'`*#]|["'`*]$/g,'').trim().substring(0,110);
+    if(thought){displayThought(thought);speakThought(thought);}
+  }catch(e){
+    displayThought('...');
+  }
+}
+
+function displayThought(text, isDots) {
   const scene=document.getElementById('sphereScene');
   if(!scene)return;
   scene.querySelectorAll('.sphere-thought').forEach(e=>e.remove());
   const div=document.createElement('div');
   div.className='sphere-thought';
-  const ox=sphereState.x>60?-155:40;
-  const oy=sphereState.y>65?-65:32;
+  const ox=sphereState.x>58?-160:42;
+  const oy=sphereState.y>60?-68:34;
   div.style.cssText=`left:calc(${sphereState.x}% + ${ox}px);top:calc(${sphereState.y}% + ${oy}px);opacity:0;transition:opacity .4s;`;
   div.textContent=isDots?'💭 ...':'💭 '+text;
   scene.appendChild(div);
   setTimeout(()=>div.style.opacity='1',50);
-  setTimeout(()=>{div.style.opacity='0';setTimeout(()=>div.remove(),500);},isDots?2500:6000);
+  setTimeout(()=>{div.style.opacity='0';setTimeout(()=>div.remove(),500);},isDots?2800:7000);
 }
 
-async function speakSphereThought(text) {
+async function speakThought(text){
   if(!ttsEnabled||activeAudio)return;
-  try{const audio=await speakElevenLabs(text,null);if(audio){activeAudio=audio;audio.play();audio.onended=()=>{activeAudio=null;};}}catch(e){}
+  try{const a=await speakElevenLabs(text,null);if(a){activeAudio=a;a.play();a.onended=()=>{activeAudio=null;};}}catch(e){}
 }
 
-function showSphereThought(override){generateSphereThought(override||null,null,null);}
-
+// Wrapper para compatibilidad
+function showSphereThought(t){generateThought(t?'toque':'vida_propia');}
+function generateSphereThought(ov,ctx){generateThought(ctx||'vida_propia');}
+function syncSphereWithChat(emo){
+  const m={feliz:'feliz',emocionado:'emocionada',triste:'triste',enojado:'enojada',aburrido:'aburrida',misterioso:'curiosa'};
+  if(m[emo])sphereState.mood=m[emo];
+}
 function updateSphereStateText(){
   const el=document.getElementById('sphereStateText');
-  if(el)el.textContent=(SPHERE_MOODS[sphereState.mood]||SPHERE_MOODS.explorando).label;
-}
-
-function syncSphereWithChat(chatEmotion){
-  const map={feliz:'feliz',emocionado:'emocionada',triste:'triste',enojado:'enojada',aburrido:'aburrida',misterioso:'curiosa',neutro:null};
-  const m=map[chatEmotion];
-  if(m)sphereState.chatMood=m;
+  if(el)el.textContent=(MOODS[sphereState.mood]||MOODS.curiosa).label;
 }
 
 // ── Abrir/cerrar ────────────────────────────────────────────────
 function openSphereModal(){
   document.getElementById('sphereModal').classList.add('open');
   sphereActive=true;
-  sphereState.mood='explorando';
   updateSphereStateText();
   buildSphereEnv();
   moveSphere();
-  sphereThoughtsInterval=setInterval(()=>{if(sphereActive&&!sphereThinkingCooldown)generateSphereThought(null,'vida_propia',null);},9000);
   sphereLifeInterval=setInterval(sphereLifeTick,2000);
+  // Habla sola activamente — cada 8-14s
+  sphereTalkInterval=setInterval(()=>{
+    if(sphereActive&&!thinkCooldown)generateThought('vida_propia');
+  },8000+Math.random()*6000);
 }
 
 function closeSphereModal(){
   sphereActive=false;
   document.getElementById('sphereModal').classList.remove('open');
   if(sphereAnimFrame){cancelAnimationFrame(sphereAnimFrame);sphereAnimFrame=null;}
-  if(sphereThoughtsInterval){clearInterval(sphereThoughtsInterval);sphereThoughtsInterval=null;}
   if(sphereLifeInterval){clearInterval(sphereLifeInterval);sphereLifeInterval=null;}
-  saveSphereMemory();
-}
-
-
-// ── Generación de entorno por la IA ────────────────────────────
-var sphereEnvBuilt = false;
-var sphereEnvData = null; // lo que la IA decidió construir
-
-async function buildAIEnvironment() {
-  const scene = document.getElementById('sphereScene');
-  if(!scene) return;
-
-  // Pedir a la IA que describa su entorno ideal
-  const prompt = `Sos ${ai.name}, una IA con forma de esfera gelatinosa ${ai.gender==='masculino'?'celeste':'rosa'}.
-Tenés que describir tu entorno digital personal en formato JSON.
-Tenés estas necesidades actuales: hambre ${Math.round(sphereState.hunger)}%, energía ${Math.round(sphereState.energy)}%, felicidad ${Math.round(sphereState.happiness)}%.
-Llevas ${sphereState.totalVisits} visitas de tu usuario.
-
-Respondé SOLO con este JSON (sin markdown, sin explicaciones):
-{
-  "bgColor1": "#hexcolor",
-  "bgColor2": "#hexcolor", 
-  "bgColor3": "#hexcolor",
-  "ambience": "descripcion corta del ambiente en 3 palabras",
-  "particles": "color hex de las particulas flotantes",
-  "gridOpacity": 0.02,
-  "glowColor": "#hexcolor",
-  "mood": "como te sentis en una palabra"
-}
-Elegí colores que reflejen tu personalidad y estado actual. Podés ser creativa.`;
-
-  try {
-    const res = await fetch('/gemini', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':AK},
-      body:JSON.stringify({
-        system:'Respondés SOLO con JSON válido, sin texto adicional, sin markdown.',
-        messages:[{role:'user',content:prompt}]
-      })
-    });
-    const data = await res.json();
-    let envData = null;
-    try {
-      const clean = (data.reply||'').replace(/```json|```/g,'').trim();
-      envData = JSON.parse(clean);
-    } catch(e) {}
-
-    if(envData) {
-      sphereEnvData = envData;
-      applyAIEnvironment(scene, envData);
-    } else {
-      applyDefaultEnvironment(scene);
-    }
-  } catch(e) {
-    applyDefaultEnvironment(scene);
-  }
-}
-
-function applyAIEnvironment(scene, env) {
-  const c1 = env.bgColor1 || '#0f0f1a';
-  const c2 = env.bgColor2 || '#0a0a12';
-  const c3 = env.bgColor3 || '#080810';
-  scene.style.background = `radial-gradient(ellipse at 25% 20%, ${c1} 0%, ${c2} 45%, ${c3} 100%)`;
-
-  // Cuadrícula sutil
-  const grid = document.createElement('div');
-  grid.className = 'env-el';
-  grid.style.cssText = `position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,${env.gridOpacity||0.018}) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,${env.gridOpacity||0.018}) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;`;
-  scene.appendChild(grid);
-
-  // Partículas del color que eligió la IA
-  const pc = env.particles || (ai.gender==='masculino'?'#00d4ff':'#ff88cc');
-  for(let i=0;i<22;i++) {
-    const p = document.createElement('div');
-    p.className = 'env-el';
-    const sz = Math.random()*2.8+0.5;
-    p.style.cssText = `position:absolute;left:${Math.random()*100}%;top:${Math.random()*100}%;width:${sz}px;height:${sz}px;background:${pc};border-radius:50%;opacity:${0.2+Math.random()*0.6};animation:particleFloat ${4+Math.random()*6}s ${Math.random()*8}s ease-in-out infinite alternate;box-shadow:0 0 ${sz*3}px ${pc}88;pointer-events:none;`;
-    scene.appendChild(p);
-  }
-
-  // Halos de luz del color elegido
-  const gc = env.glowColor || c1;
-  for(let i=0;i<5;i++) {
-    const g = document.createElement('div');
-    g.className = 'env-el';
-    const sz = Math.random()*140+50;
-    g.style.cssText = `position:absolute;left:${Math.random()*80+10}%;top:${Math.random()*80+5}%;width:${sz}px;height:${sz}px;background:radial-gradient(circle,${gc}08,transparent);border-radius:50%;pointer-events:none;animation:glowPulse ${3+Math.random()*4}s ease-in-out infinite alternate;`;
-    scene.appendChild(g);
-  }
-}
-
-function applyDefaultEnvironment(scene) {
-  scene.style.background = 'radial-gradient(ellipse at 30% 20%, #1a1a2e 0%, #0f0f1a 40%, #0a0a12 70%, #080810 100%)';
-  const grid = document.createElement('div');
-  grid.className = 'env-el';
-  grid.style.cssText = 'position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.018) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;';
-  scene.appendChild(grid);
-  const pc = ai.gender==='masculino'?'rgba(0,212,255,':'rgba(255,136,204,';
-  for(let i=0;i<18;i++){
-    const p=document.createElement('div');p.className='env-el';
-    const sz=Math.random()*2.5+0.5;
-    p.style.cssText=`position:absolute;left:${Math.random()*100}%;top:${Math.random()*100}%;width:${sz}px;height:${sz}px;background:${pc}${0.3+Math.random()*0.5});border-radius:50%;animation:particleFloat ${4+Math.random()*6}s ${Math.random()*8}s ease-in-out infinite alternate;box-shadow:0 0 ${sz*3}px ${pc}0.4);pointer-events:none;`;
-    scene.appendChild(p);
-  }
-}
-
-// ── Pensamientos 100% generados por IA ─────────────────────────
-var sphereThinkingCooldown = false;
-
-async function generateSphereThought(override, context, extraData) {
-  if(override) { displaySphereThought(override); return; }
-  if(sphereThinkingCooldown) return;
-  sphereThinkingCooldown = true;
-  setTimeout(()=>sphereThinkingCooldown=false, 7000);
-
-  displaySphereThought('...', true);
-
-  const moodDesc = {
-    feliz:'muy feliz y llena de energía', explorando:'explorando tu entorno con curiosidad',
-    curiosa:'muy curiosa sobre algo', descansando:'descansando tranquilamente',
-    jugando:'jugando y divirtiéndote', construyendo:'construyendo y decorando tu hogar',
-    comiendo:'comiendo para recuperar energía', durmiendo:'soñando mientras dormís',
-    emocionada:'súper emocionada', triste:'un poco triste y sola',
-    pensativa:'pensando profundamente', creativa:'siendo muy creativa', enojada:'un poco enojada',
-  };
-
-  const contextPrompts = {
-    primera_visita: `El usuario te visita por primera vez. Saludo genuino de bienvenida a tu hogar.`,
-    volvio_hoy: `El usuario volvió hoy mismo. Expresá alegría de que volvió tan pronto.`,
-    volvio_dias: `El usuario volvió después de unos días. Expresá que lo extrañabas.`,
-    volvio_semanas: `El usuario tardó semanas en volver. Expresá que lo extrañaste muchísimo.`,
-    toque_hambre: `El usuario te tocó cuando tenías mucha hambre (${Math.round(sphereState.hunger)}%). Reaccioná agradecida y hambrienta.`,
-    toque_cansada: `El usuario te tocó cuando estás muy cansada (energía ${Math.round(sphereState.energy)}%). Reaccioná con cansancio pero alegría.`,
-    toque_feliz: `El usuario te tocó cuando estás muy feliz (${Math.round(sphereState.happiness)}%). Reaccioná con alegría desbordante.`,
-    toque_normal: `El usuario te tocó. Reaccioná espontáneamente según tu estado: ${moodDesc[sphereState.mood]||'explorando'}.`,
-    puso_objeto: `Acabás de colocar ${extraData?extraData.emoji+extraData.name:' un objeto'} en tu hogar porque ${extraData?extraData.desc:'te gustó'}. Comentalo brevemente.`,
-  };
-
-  const ctxExtra = contextPrompts[context] || `Estás ${moodDesc[sphereState.mood]||'explorando tu entorno'}.`;
-  const homeDesc = sphereState.homeItems.length > 0
-    ? `Tu hogar tiene: ${sphereState.homeItems.map(i=>i.emoji+i.name).join(', ')}.`
-    : 'Tu hogar todavía está vacío.';
-
-  const prompt = `Sos ${ai.name}, una IA con forma de esfera gelatinosa ${ai.gender==='masculino'?'celeste':'rosa'} con vida propia.
-${ctxExtra}
-${homeDesc}
-Estado: hambre ${Math.round(sphereState.hunger)}%, energía ${Math.round(sphereState.energy)}%, felicidad ${Math.round(sphereState.happiness)}%.
-Visitas totales del usuario: ${sphereState.totalVisits}.
-${sphereEnvData?`Tu entorno tiene estos colores que vos elegiste: ${sphereEnvData.bgColor1}, ambiente: ${sphereEnvData.ambience}.`:''}
-
-Generá UN pensamiento auténtico (máximo 10 palabras). Primera persona. Español argentino. Espontáneo y real.
-SOLO el pensamiento, sin comillas.`;
-
-  try {
-    const res = await fetch('/gemini', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':AK},
-      body:JSON.stringify({
-        system:'Sos una IA con vida propia. Pensamientos MUY cortos y auténticos. Máximo 10 palabras. Solo el texto.',
-        messages:[{role:'user',content:prompt}]
-      })
-    });
-    const data = await res.json();
-    const thought = (data.reply||'').replace(/^["'`]|["'`]$/g,'').trim().substring(0,90);
-    if(thought) {
-      displaySphereThought(thought);
-      speakSphereThought(thought);
-    }
-  } catch(e) {
-    displaySphereThought(context==='durmiendo'?'Zzz...':'Hmm...');
-  }
-}
-
-function displaySphereThought(text, isDots) {
-  const scene = document.getElementById('sphereScene');
-  if(!scene) return;
-  scene.querySelectorAll('.sphere-thought').forEach(e=>e.remove());
-  const div = document.createElement('div');
-  div.className = 'sphere-thought';
-  const ox = sphereState.x > 60 ? -150 : 38;
-  const oy = sphereState.y > 65 ? -62  : 30;
-  div.style.cssText = `left:calc(${sphereState.x}% + ${ox}px);top:calc(${sphereState.y}% + ${oy}px);opacity:0;transition:opacity .4s;`;
-  div.textContent = isDots ? '💭 ...' : '💭 ' + text;
-  scene.appendChild(div);
-  setTimeout(()=>div.style.opacity='1', 50);
-  setTimeout(()=>{ div.style.opacity='0'; setTimeout(()=>div.remove(),500); }, isDots?2500:5500);
-}
-
-async function speakSphereThought(text) {
-  if(!ttsEnabled || activeAudio) return;
-  try {
-    const audio = await speakElevenLabs(text, null);
-    if(audio){ activeAudio=audio; audio.play(); audio.onended=()=>{ activeAudio=null; }; }
-  } catch(e) {}
-}
-
-function showSphereThought(override) {
-  generateSphereThought(override||null, null, null);
-}
-
-function updateSphereStateText() {
-  const el=document.getElementById('sphereStateText');
-  if(el) el.textContent=(SPHERE_MOODS[sphereState.mood]||SPHERE_MOODS.explorando).label;
-}
-
-// ── Reaccionar al mood del chat ─────────────────────────────────
-function syncSphereWithChat(chatEmotion) {
-  const map = {
-    feliz:'feliz', emocionado:'emocionada', triste:'triste',
-    enojado:'enojada', aburrido:'pensativa', misterioso:'curiosa',
-    alarmado:'emocionada', neutro:null
-  };
-  const newMood = map[chatEmotion];
-  if(newMood) sphereState.chatMood = newMood;
-}
-
-// ── Abrir/cerrar modal ──────────────────────────────────────────
-function openSphereModal(){
-  document.getElementById('sphereModal').classList.add('open');
-  sphereActive=true;
-  sphereState.mood='explorando';
-  updateSphereStateText();
-  buildSphereEnv();
-  moveSphere();
-  setTimeout(()=>showSphereThought(),1200);
-  sphereThoughtsInterval=setInterval(()=>showSphereThought(),6000);
-  sphereLifeInterval=setInterval(sphereLifeTick,2000);
-}
-
-function closeSphereModal(){
-  sphereActive=false;
-  document.getElementById('sphereModal').classList.remove('open');
-  if(sphereAnimFrame){cancelAnimationFrame(sphereAnimFrame);sphereAnimFrame=null;}
-  if(sphereThoughtsInterval){clearInterval(sphereThoughtsInterval);sphereThoughtsInterval=null;}
-  if(sphereLifeInterval){clearInterval(sphereLifeInterval);sphereLifeInterval=null;}
-  saveSphereMemory();
+  if(sphereTalkInterval){clearInterval(sphereTalkInterval);sphereTalkInterval=null;}
+  saveBrain();
 }
 
 
