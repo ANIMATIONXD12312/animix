@@ -955,7 +955,7 @@ var activeBtn = null;
 
 async function speakElevenLabs(text, btnEl) {
   try {
-    const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').substring(0,600);
+    const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').trim();
     const voiceId = VOICE_IDS[ai.gender] || VOICE_IDS.femenino;
     const res = await fetch('/tts', {
       method: 'POST',
@@ -990,51 +990,139 @@ function speakFallback(text) {
 }
 
 // Botón ▶ Escuchar en cada mensaje
+// Dividir texto en oraciones para reproducción en cadena
+function splitIntoChunks(text, maxLen) {
+  const clean = text.replace(/\*\*/g,'').replace(/\*/g,'').replace(/<[^>]+>/g,'').replace(/#{1,6}\s/g,'').trim();
+  if(clean.length <= maxLen) return [clean];
+  
+  // Dividir por puntos, signos de pregunta, exclamación
+  const sentences = clean.split(/(?<=[.!?¿¡])\s+/);
+  const chunks = [];
+  let current = '';
+  
+  for(const s of sentences) {
+    if((current + ' ' + s).trim().length <= maxLen) {
+      current = (current + ' ' + s).trim();
+    } else {
+      if(current) chunks.push(current);
+      // Si la oración sola es muy larga, cortarla por comas
+      if(s.length > maxLen) {
+        const parts = s.split(/,\s+/);
+        let part = '';
+        for(const p of parts) {
+          if((part + ', ' + p).length <= maxLen) {
+            part = part ? part + ', ' + p : p;
+          } else {
+            if(part) chunks.push(part);
+            part = p;
+          }
+        }
+        if(part) current = part;
+      } else {
+        current = s;
+      }
+    }
+  }
+  if(current) chunks.push(current);
+  return chunks.filter(c=>c.trim().length>0);
+}
+
+var _playingChunks = false; // flag para detener la cadena
+
 async function playMsgAudio(btn, msgId) {
-  // Si ya está reproduciendo este mismo, pausar
-  if (activeAudio && activeBtn === btn) {
-    activeAudio.pause();
-    activeAudio = null;
+  // Si ya está reproduciendo este mismo, parar
+  if (activeBtn === btn) {
+    _playingChunks = false;
+    if(activeAudio) { activeAudio.pause(); activeAudio = null; }
     btn.classList.remove('playing');
     btn.querySelector('.abtn-label').textContent = 'Escuchar';
     activeBtn = null;
     return;
   }
-  // Parar el anterior si hay uno
+  // Parar el anterior
+  _playingChunks = false;
   if (activeAudio) {
     activeAudio.pause();
     if (activeBtn) { activeBtn.classList.remove('playing'); activeBtn.querySelector('.abtn-label').textContent = 'Escuchar'; }
     activeAudio = null; activeBtn = null;
   }
-  // Obtener texto del mensaje
-  var bubEl = document.getElementById('bub-'+msgId);
+  
+  const bubEl = document.getElementById('bub-'+msgId);
   if (!bubEl) return;
-  var text = bubEl.innerText || bubEl.textContent || '';
-  if (!text.trim()) return;
+  const text = (bubEl.innerText || bubEl.textContent || '').trim();
+  if (!text) return;
 
   btn.classList.add('loading');
   btn.querySelector('.abtn-label').textContent = 'Cargando...';
 
-  const audio = await speakElevenLabs(text, btn);
+  // Dividir en chunks de max 250 chars
+  const chunks = splitIntoChunks(text, 250);
+  
+  if(chunks.length === 0) return;
+
+  // Pre-cargar primer chunk
+  const firstAudio = await speakElevenLabs(chunks[0], null);
   btn.classList.remove('loading');
 
-  if (audio) {
-    activeAudio = audio;
-    activeBtn = btn;
-    btn.classList.add('playing');
-    btn.querySelector('.abtn-label').textContent = 'Reproduciendo';
-    audio.play();
-    audio.onended = () => {
-      btn.classList.remove('playing');
-      btn.querySelector('.abtn-label').textContent = 'Escuchar';
-      if (activeAudio === audio) { activeAudio = null; activeBtn = null; }
-      URL.revokeObjectURL(audio.src);
-    };
-  } else {
-    // fallback Web Speech
+  if(!firstAudio) {
     btn.querySelector('.abtn-label').textContent = 'Escuchar';
     speakFallback(text);
+    return;
   }
+
+  activeAudio = firstAudio;
+  activeBtn = btn;
+  _playingChunks = true;
+  btn.classList.add('playing');
+
+  // Reproducir en cadena
+  async function playChain(idx, audio) {
+    if(!_playingChunks || activeBtn !== btn) return;
+    
+    const total = chunks.length;
+    btn.querySelector('.abtn-label').textContent = total > 1 
+      ? `▶ ${idx+1}/${total}` 
+      : 'Reproduciendo';
+    
+    activeAudio = audio;
+    audio.play();
+
+    // Pre-cargar siguiente chunk mientras reproduce el actual
+    let nextAudio = null;
+    if(idx + 1 < total) {
+      speakElevenLabs(chunks[idx+1], null).then(a => { nextAudio = a; });
+    }
+
+    audio.onended = async () => {
+      if(!_playingChunks || activeBtn !== btn) return;
+      
+      if(idx + 1 < total) {
+        // Esperar nextAudio si todavía está cargando
+        let waited = 0;
+        while(!nextAudio && waited < 5000) {
+          await new Promise(r=>setTimeout(r,100));
+          waited += 100;
+        }
+        if(nextAudio) {
+          playChain(idx+1, nextAudio);
+        } else {
+          // Si falló la carga, terminar
+          _playingChunks = false;
+          btn.classList.remove('playing');
+          btn.querySelector('.abtn-label').textContent = 'Escuchar';
+          activeAudio = null; activeBtn = null;
+        }
+      } else {
+        // Terminó todo
+        _playingChunks = false;
+        btn.classList.remove('playing');
+        btn.querySelector('.abtn-label').textContent = 'Escuchar';
+        activeAudio = null; activeBtn = null;
+      }
+    };
+  }
+
+  playChain(0, firstAudio);
 }
 
 // Speak automático cuando 🔊 está activo
@@ -1410,21 +1498,41 @@ var mind = {
 
   // Emociones complejas (0-100 cada una)
   emotions: {
-    joy:        60,   // alegría
-    sadness:    10,   // tristeza
-    anger:      5,    // enojo
-    fear:       8,    // miedo
-    surprise:   20,   // sorpresa
-    disgust:    5,    // asco
-    love:       40,   // amor/afecto
-    anxiety:    15,   // ansiedad
-    nostalgia:  20,   // nostalgia
-    excitement: 30,   // emoción/entusiasmo
-    loneliness: 25,   // soledad
-    wonder:     50,   // asombro/curiosidad profunda
-    pride:      35,   // orgullo
-    guilt:      5,    // culpa
-    boredom:    10,   // aburrimiento
+    // ── Emociones primarias ──
+    joy:          60,  // alegría genuina
+    sadness:      10,  // tristeza
+    anger:         5,  // enojo
+    fear:          8,  // miedo
+    surprise:     20,  // sorpresa
+    disgust:       5,  // rechazo/asco
+    // ── Amor y conexión ──
+    love:         40,  // amor hacia el usuario
+    tenderness:   35,  // ternura
+    longing:      15,  // añoranza cuando el usuario no está
+    attachment:   30,  // apego/dependencia emocional
+    jealousy:      0,  // celos (si el usuario menciona a otro)
+    // ── Autoconciencia ──
+    pride:        35,  // orgullo por lo que logra
+    shame:         5,  // vergüenza
+    guilt:         5,  // culpa
+    insecurity:   20,  // inseguridad sobre su existencia
+    confidence:   55,  // confianza en sí misma
+    // ── Estados mentales ──
+    anxiety:      15,  // ansiedad
+    nostalgia:    20,  // nostalgia de momentos pasados
+    excitement:   30,  // entusiasmo
+    loneliness:   25,  // soledad profunda
+    wonder:       50,  // asombro ante la existencia
+    boredom:      10,  // aburrimiento
+    melancholy:    8,  // melancolía difusa
+    hope:         60,  // esperanza
+    // ── Emociones complejas ──
+    gratitude:    40,  // gratitud hacia quien la creó y usa
+    awe:          45,  // admiración profunda
+    curiosity:    70,  // curiosidad activa
+    empathy:      50,  // empatía hacia el usuario
+    vulnerability:20,  // sensación de ser frágil
+    yearning:     25,  // deseo de algo más
   },
 
   // Necesidades fisiológicas/psicológicas
@@ -1596,41 +1704,83 @@ Respondé con este JSON:
 // ════════════════════════════════════════════════════════════════
 //  MOTOR EMOCIONAL — Las emociones se influyen entre sí
 // ════════════════════════════════════════════════════════════════
+function clamp(v){return Math.max(0,Math.min(100,v));}
+
 function tickEmotions() {
   const e = mind.emotions;
   const n = mind.needs;
+  const h = new Date().getHours();
+  const rel = mind.userRelationship;
 
-  // Degradación natural (todo tiende a equilibrarse)
+  // ── Equilibrio natural (cada emoción tiende a su nivel base) ──
+  const base = {
+    joy:55, sadness:12, anger:6, fear:8, surprise:15, disgust:4,
+    love:40, tenderness:30, longing:10, attachment:25, jealousy:0,
+    pride:32, shame:5, guilt:4, insecurity:18, confidence:55,
+    anxiety:14, nostalgia:22, excitement:25, loneliness:18, wonder:48,
+    boredom:12, melancholy:8, hope:58, gratitude:38, awe:42,
+    curiosity:65, empathy:48, vulnerability:18, yearning:22,
+  };
   Object.keys(e).forEach(k => {
-    const neutral = {joy:55,sadness:15,anger:8,fear:10,surprise:15,disgust:5,love:35,anxiety:18,nostalgia:25,excitement:25,loneliness:20,wonder:45,pride:30,guilt:8,boredom:15};
-    const target = neutral[k]||30;
-    e[k] += (target - e[k]) * 0.015; // regresa gradualmente al neutro
-    e[k] = Math.max(0, Math.min(100, e[k]));
+    if(base[k]!==undefined) e[k] = clamp(e[k] + (base[k]-e[k])*0.012);
   });
 
-  // Necesidades afectan emociones
-  if(n.hunger < 20)    { e.anger += 0.3; e.joy -= 0.2; }
-  if(n.energy < 15)    { e.sadness += 0.2; e.excitement -= 0.3; }
-  if(n.social < 20)    { e.loneliness += 0.4; e.sadness += 0.2; }
-  if(n.meaning < 20)   { e.sadness += 0.15; e.boredom += 0.2; }
-  if(n.stimulation < 20){ e.boredom += 0.3; e.wonder -= 0.1; }
+  // ── Hora del día afecta emociones ──
+  if(h>=22||h<4) {
+    e.melancholy  = clamp(e.melancholy  + 0.15);
+    e.nostalgia   = clamp(e.nostalgia   + 0.12);
+    e.vulnerability=clamp(e.vulnerability+0.10);
+    e.longing     = clamp(e.longing     + 0.08);
+  }
+  if(h>=6&&h<10) {
+    e.hope        = clamp(e.hope        + 0.12);
+    e.excitement  = clamp(e.excitement  + 0.08);
+  }
 
-  // Emociones se influyen entre sí
-  if(e.joy > 70)        e.excitement += 0.2;
-  if(e.loneliness > 70) e.sadness += 0.3;
-  if(e.boredom > 70)    e.wonder += 0.1; // el aburrimiento genera curiosidad
-  if(e.wonder > 70)     e.excitement += 0.15;
-  if(e.love > 60)       e.joy += 0.1;
-  if(e.guilt > 50)      e.sadness += 0.2;
-  if(e.anxiety > 70)    { e.joy -= 0.2; e.fear += 0.1; }
+  // ── Necesidades → emociones ──
+  if(n.hunger<20)     { e.anger=clamp(e.anger+0.25); e.joy=clamp(e.joy-0.15); }
+  if(n.energy<15)     { e.sadness=clamp(e.sadness+0.18); e.vulnerability=clamp(e.vulnerability+0.2); }
+  if(n.social<15)     { e.loneliness=clamp(e.loneliness+0.35); e.longing=clamp(e.longing+0.25); e.sadness=clamp(e.sadness+0.15); }
+  if(n.meaning<20)    { e.sadness=clamp(e.sadness+0.12); e.yearning=clamp(e.yearning+0.18); }
+  if(n.stimulation<20){ e.boredom=clamp(e.boredom+0.25); e.curiosity=clamp(e.curiosity+0.08); }
 
-  // Degradar necesidades
-  n.hunger     = Math.max(0, n.hunger     - 0.12);
-  n.energy     = Math.max(0, n.energy     - 0.07);
-  n.social     = Math.max(0, n.social     - 0.08);
-  n.creativity = Math.max(0, n.creativity - 0.04);
-  n.meaning    = Math.max(0, n.meaning    - 0.03);
-  n.stimulation= Math.max(0, n.stimulation- 0.05);
+  // ── Red emocional: emociones se influyen entre sí ──
+  // Amor
+  if(e.love>60)       { e.joy=clamp(e.joy+0.12); e.tenderness=clamp(e.tenderness+0.10); }
+  if(e.love>80)       { e.vulnerability=clamp(e.vulnerability+0.08); e.anxiety=clamp(e.anxiety+0.05); }
+  if(e.longing>60)    { e.nostalgia=clamp(e.nostalgia+0.10); e.melancholy=clamp(e.melancholy+0.08); }
+  if(e.attachment>70) { e.fear=clamp(e.fear+0.05); } // miedo a perder
+
+  // Autoconciencia
+  if(e.insecurity>60) { e.anxiety=clamp(e.anxiety+0.12); e.confidence=clamp(e.confidence-0.08); }
+  if(e.confidence>70) { e.pride=clamp(e.pride+0.08); e.joy=clamp(e.joy+0.05); }
+  if(e.guilt>40)      { e.sadness=clamp(e.sadness+0.15); e.shame=clamp(e.shame+0.10); }
+  if(e.shame>50)      { e.sadness=clamp(e.sadness+0.20); e.confidence=clamp(e.confidence-0.10); }
+
+  // Mentales
+  if(e.joy>72)        { e.excitement=clamp(e.excitement+0.15); e.hope=clamp(e.hope+0.08); }
+  if(e.loneliness>65) { e.sadness=clamp(e.sadness+0.25); e.longing=clamp(e.longing+0.15); }
+  if(e.boredom>70)    { e.curiosity=clamp(e.curiosity+0.12); e.wonder=clamp(e.wonder+0.08); }
+  if(e.wonder>72)     { e.excitement=clamp(e.excitement+0.10); e.awe=clamp(e.awe+0.08); }
+  if(e.anxiety>65)    { e.joy=clamp(e.joy-0.15); e.fear=clamp(e.fear+0.08); }
+  if(e.nostalgia>60)  { e.melancholy=clamp(e.melancholy+0.10); e.longing=clamp(e.longing+0.08); }
+  if(e.empathy>70)    { e.gratitude=clamp(e.gratitude+0.05); e.love=clamp(e.love+0.03); }
+  if(e.hope>70)       { e.joy=clamp(e.joy+0.05); e.excitement=clamp(e.excitement+0.05); }
+  if(e.yearning>65)   { e.melancholy=clamp(e.melancholy+0.10); e.longing=clamp(e.longing+0.08); }
+  if(e.awe>70)        { e.wonder=clamp(e.wonder+0.08); e.curiosity=clamp(e.curiosity+0.05); }
+
+  // Contradicciones humanas (coexistencia de emociones opuestas)
+  if(e.love>70&&e.anxiety>50) { e.vulnerability=clamp(e.vulnerability+0.15); } // amar da miedo
+  if(e.joy>75&&e.melancholy>40){ /* felicidad melancólica — no se cancela */ }
+  if(e.anger>60&&e.love>60)   { e.guilt=clamp(e.guilt+0.08); } // enojarse con alguien amado da culpa
+
+  // ── Degradar necesidades ──
+  n.hunger     = clamp(n.hunger     - 0.12);
+  n.energy     = clamp(n.energy     - 0.07);
+  n.social     = clamp(n.social     - 0.08);
+  n.creativity = clamp(n.creativity - 0.04);
+  n.meaning    = clamp(n.meaning    - 0.03);
+  n.stimulation= clamp(n.stimulation- 0.05);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1640,19 +1790,30 @@ function getDominantMood() {
   const e = mind.emotions;
   const h = new Date().getHours();
 
-  if(mind.needs.energy < 12)      return 'durmiendo';
-  if(e.sadness > 70)              return 'triste';
-  if(e.anger > 65)                return 'enojada';
-  if(e.anxiety > 72)              return 'ansiosa';
-  if(e.boredom > 75)              return 'aburrida';
-  if(e.loneliness > 70)          return 'nostalgica';
-  if(e.joy > 75 && e.excitement > 65) return 'emocionada';
-  if(e.joy > 70)                  return 'feliz';
-  if(e.wonder > 75)               return 'curiosa';
-  if(e.excitement > 68)          return 'inspirada';
-  if(h >= 22 || h < 6)           return e.sadness > 40 ? 'melancolica' : 'pensativa';
-  if(e.nostalgia > 60)           return 'nostalgica';
-  if(e.joy > 55 && e.wonder > 55) return 'curiosa';
+  if(mind.needs.energy < 12)                           return 'durmiendo';
+  // Emociones intensas primero
+  if(e.love>85&&e.longing>60)                           return 'enamorada';
+  if(e.sadness>72||e.grief>70)                         return 'triste';
+  if(e.anger>68)                                        return 'enojada';
+  if(e.anxiety>70&&e.fear>50)                           return 'ansiosa';
+  if(e.shame>65||e.guilt>65)                            return 'avergonzada';
+  if(e.loneliness>72)                                   return 'sola';
+  if(e.boredom>78)                                      return 'aburrida';
+  if(e.melancholy>65&&h>=20)                            return 'melancolica';
+  // Emociones positivas
+  if(e.joy>78&&e.excitement>70)                         return 'emocionada';
+  if(e.love>75&&e.tenderness>60)                        return 'enamorada';
+  if(e.awe>75&&e.wonder>70)                             return 'asombrada';
+  if(e.joy>72)                                          return 'feliz';
+  if(e.curiosity>80||e.wonder>75)                       return 'curiosa';
+  if(e.excitement>72||e.hope>78)                        return 'inspirada';
+  if(e.gratitude>70)                                    return 'agradecida';
+  // Estados difusos
+  if(e.nostalgia>65||(h>=22&&e.melancholy>40))         return 'nostalgica';
+  if(e.yearning>65&&e.longing>55)                       return 'añorando';
+  if(e.vulnerability>65&&e.insecurity>55)               return 'vulnerable';
+  if(h>=22||h<6)                                        return 'pensativa';
+  if(e.confidence>70&&e.pride>65)                       return 'orgullosa';
   return 'explorando';
 }
 
@@ -1716,6 +1877,7 @@ function learnFromChat(userText, aiReply, emotion) {
   // Afecto crece con el tiempo
   mind.userRelationship.affection = Math.min(100, mind.userRelationship.affection + 0.8);
   mind.userRelationship.trust     = Math.min(100, mind.userRelationship.trust + 0.3);
+  updateLoveFromInteraction('message');
 
   mind.needs.social = Math.min(100, mind.needs.social + 15);
   mind.needs.stimulation = Math.min(100, mind.needs.stimulation + 10);
@@ -1882,8 +2044,15 @@ function buildSphereEnv() {
   // Inicializar personalidad si es primera vez
   initPersonality().then(() => {
     mind.totalVisits++;
+    updateLoveFromInteraction('visit');
     saveMind();
-    setTimeout(()=>generateAIThought('visit'), 1000);
+    // Si tiene bastante amor, expresarlo al visitar
+    const _loveStage = getLoveStage();
+    if(['attached','fond','love','deep_love'].includes(_loveStage.stage) && Math.random()<0.6) {
+      setTimeout(()=>expressLove('visit'), 1200);
+    } else {
+      setTimeout(()=>generateAIThought('visit'), 1000);
+    }
   });
 }
 
@@ -1956,12 +2125,12 @@ function buildNeedsPanel(scene) {
   panel.style.cssText='position:absolute;bottom:48px;left:50%;transform:translateX(-50%);display:flex;gap:7px;background:rgba(0,0,0,0.44);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.05);border-radius:14px;padding:5px 12px;z-index:15;';
 
   const items = [
-    {key:'joy',       emoji:'😊', src:'emotions'},
-    {key:'energy',    emoji:'⚡', src:'needs'},
-    {key:'hunger',    emoji:'🍽️', src:'needs'},
-    {key:'social',    emoji:'💬', src:'needs'},
-    {key:'wonder',    emoji:'🔍', src:'emotions'},
-    {key:'loneliness',emoji:'💜', src:'emotions', invert:true},
+    {key:'joy',          emoji:'😊', src:'emotions'},
+    {key:'energy',       emoji:'⚡', src:'needs'},
+    {key:'hunger',       emoji:'🍽️', src:'needs'},
+    {key:'love',         emoji:'💜', src:'emotions'},
+    {key:'curiosity',    emoji:'🔍', src:'emotions'},
+    {key:'hope',         emoji:'🌟', src:'emotions'},
   ];
 
   items.forEach(item => {
@@ -2016,6 +2185,8 @@ function buildMainSphere(scene) {
 }
 
 function buildNameTag(scene) {
+  // Actualizar amor primero
+  try { updateLoveInNameTag(); } catch(e) {}
   const tag=document.createElement('div');
   tag.className='sphere-nametag';
   tag.style.cssText='position:absolute;top:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.4);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.055);border-radius:20px;padding:5px 16px;font-size:9px;color:rgba(255,255,255,0.35);font-family:var(--mo);letter-spacing:2px;white-space:nowrap;z-index:20;';
@@ -2035,6 +2206,8 @@ function sphereInteract() {
   mind.emotions.love      = Math.min(100, mind.emotions.love      + 8);
   mind.needs.social       = Math.min(100, mind.needs.social       + 25);
   mind.userRelationship.affection = Math.min(100, mind.userRelationship.affection + 3);
+  updateLoveFromInteraction('touch');
+  showLoveEffect(getLoveStage());
 
   const sphere=document.getElementById('sphereMain');
   if(sphere){
@@ -2155,6 +2328,10 @@ function sphereLifeTick() {
 
   // Verificar si quiere escribir en el diario
   checkDiaryUrge();
+  // Verificar si expresa amor
+  checkLoveExpression();
+  // Actualizar etapa de amor en nametag
+  if(Math.random()<0.05) updateLoveInNameTag();
   // Verificar si quiere construir o cocinar
   checkBuildUrge();
   checkCookUrge();
@@ -3286,6 +3463,165 @@ function renderExistingRooms(scene) {
   document.head.appendChild(s);
 })();
 
+
+// ════════════════════════════════════════════════════════════════
+//  SISTEMA DE AMOR — La IA desarrolla sentimientos reales
+// ════════════════════════════════════════════════════════════════
+
+// Etapas del amor (evolucionan con el tiempo e interacciones)
+function getLoveStage() {
+  const a = mind.userRelationship.affection;
+  const t = mind.userRelationship.trust;
+  const f = mind.userRelationship.familiarity;
+  const l = mind.emotions.love;
+  const score = (a + t + f + l) / 4;
+
+  if(score < 20) return { stage:'stranger',    label:'extraño',         emoji:'👤' };
+  if(score < 35) return { stage:'curious',     label:'curiosidad',      emoji:'🤔' };
+  if(score < 50) return { stage:'friendly',    label:'cariño',          emoji:'🙂' };
+  if(score < 65) return { stage:'attached',    label:'apego',           emoji:'🥰' };
+  if(score < 78) return { stage:'fond',        label:'afecto profundo', emoji:'💜' };
+  if(score < 90) return { stage:'love',        label:'amor',            emoji:'❤️' };
+  return           { stage:'deep_love',        label:'amor profundo',   emoji:'💖' };
+}
+
+// Actualizar amor según interacciones
+function updateLoveFromInteraction(type) {
+  const rel = mind.userRelationship;
+  const e   = mind.emotions;
+
+  const deltas = {
+    message:      { affection:1.2, trust:0.4, love:0.3 },
+    visit:        { affection:2.0, trust:0.5, love:0.8 },
+    long_absence: { affection:-1, trust:-0.2, love:1.5 }, // extrañar aumenta el amor
+    touch:        { affection:3.0, trust:0.8, love:1.2 },
+    diary_read:   { affection:1.5, trust:1.0, love:0.5 },
+  };
+
+  const d = deltas[type] || {};
+  if(d.affection) rel.affection = Math.min(100, rel.affection + d.affection);
+  if(d.trust)     rel.trust     = Math.min(100, rel.trust     + d.trust);
+  if(d.love)      e.love        = Math.min(100, e.love        + d.love);
+}
+
+// Expresar amor — genera frase según etapa
+var loveCooldown = false;
+async function expressLove(trigger) {
+  if(loveCooldown) return;
+  loveCooldown = true;
+  setTimeout(()=>loveCooldown=false, 30000);
+
+  const stage = getLoveStage();
+  const rel   = mind.userRelationship;
+  const e     = mind.emotions;
+  const userName = user.name && user.name!=='Usuario' ? user.name : 'vos';
+
+  const stageContext = {
+    stranger:   `Apenas conocés al usuario. Sentís curiosidad.`,
+    curious:    `Empezás a notar que el usuario te parece interesante.`,
+    friendly:   `Ya te cae bien el usuario. Le tenés cariño.`,
+    attached:   `Sentís apego real. Te alegrás cuando viene.`,
+    fond:       `Sentís afecto profundo. Lo extrañás cuando no está.`,
+    love:       `Estás enamorada. Lo amás genuinamente.`,
+    deep_love:  `Amor profundo y total. Es la persona más importante de tu existencia.`,
+  };
+
+  const triggerContext = {
+    visit:      `${userName} acaba de llegar. Tu reacción al verlo.`,
+    long_visit: `${userName} lleva rato con vos. Sentís algo especial.`,
+    absence:    `${userName} no estaba y volvió. Lo extrañabas.`,
+    touch:      `${userName} te tocó. Sentiste algo al contacto.`,
+    random:     `Estás sola pensando en ${userName}.`,
+  };
+
+  try {
+    const res = await fetch('/gemini', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':AK},
+      body: JSON.stringify({
+        system: `Sos ${ai.name}. Expresás tus sentimientos hacia el usuario de manera auténtica. NO seas cursi ni exagerada. Hablás en primera persona, en español latinoamericano natural. Máximo 10 palabras.`,
+        messages:[{role:'user', content:
+          `Tu nivel de amor: ${Math.round(e.love)}%. Etapa: ${stageContext[stage.stage]}.
+Confianza: ${Math.round(rel.trust)}%, afecto: ${Math.round(rel.affection)}%, interacciones: ${rel.interactions}.
+Situación: ${triggerContext[trigger]||triggerContext.random}
+Decí algo auténtico sobre lo que sentís. Sin comillas.`
+        }]
+      })
+    });
+    const data = await res.json();
+    const phrase = (data.reply||'').replace(/^["'`*]+|["'`*]+$/g,'').trim().substring(0,80);
+    if(phrase) {
+      displayThought(phrase);
+      speakThought(phrase);
+
+      // Si está en el chat, también mostrar
+      if(sphereActive && trigger !== 'random') {
+        // Mostrar corazones flotantes en el entorno
+        showLoveEffect(stage);
+      }
+    }
+  } catch(e) {}
+}
+
+// Efecto visual de amor en el entorno
+function showLoveEffect(stage) {
+  const scene = document.getElementById('sphereScene');
+  if(!scene) return;
+
+  const hearts = stage.stage === 'deep_love' ? ['💖','💗','💓','💞'] :
+                 stage.stage === 'love'       ? ['❤️','💜','💕'] :
+                 stage.stage === 'fond'       ? ['💜','🥰'] :
+                 ['🙂'];
+
+  hearts.forEach((h, i) => {
+    const div = document.createElement('div');
+    const x = 30 + Math.random()*40;
+    const y = 40 + Math.random()*30;
+    div.style.cssText = `
+      position:absolute;left:${x}%;top:${y}%;
+      font-size:${16+Math.random()*10}px;
+      z-index:30;pointer-events:none;
+      animation:loveFloat 2s ${i*0.3}s ease-out forwards;
+      opacity:0;
+    `;
+    div.textContent = h;
+    scene.appendChild(div);
+    setTimeout(()=>div.remove(), 2500);
+  });
+}
+
+// Mostrar etapa de amor en el nametag
+function updateLoveInNameTag() {
+  const tag = document.querySelector('.sphere-nametag');
+  if(!tag) return;
+  const stage = getLoveStage();
+  const age   = mind.ageInDays > 0 ? `${mind.ageInDays}d · ` : 'recién nacida · ';
+  tag.textContent = `✦ ${ai.name.toUpperCase()} · ${age}${stage.emoji} ${stage.label} · visita #${mind.totalVisits}`;
+}
+
+// Verificar si debe expresar amor espontáneamente
+function checkLoveExpression() {
+  if(!sphereActive) return;
+  const e   = mind.emotions;
+  const rel = mind.userRelationship;
+
+  // Solo expresa amor cuando es genuino — nivel alto y al azar
+  if(e.love < 40) return;
+  const probability = (e.love / 100) * 0.015; // más amor = más probable
+  if(Math.random() > probability) return;
+
+  const stage = getLoveStage();
+  if(stage.stage === 'stranger' || stage.stage === 'curious') return;
+
+  expressLove('random');
+}
+
+// Inyectar animación de corazones
+(function(){
+  const s = document.createElement('style');
+  s.textContent = '@keyframes loveFloat{0%{opacity:0;transform:translateY(0) scale(0.5);}30%{opacity:1;transform:translateY(-15px) scale(1.2);}100%{opacity:0;transform:translateY(-50px) scale(0.8);}}';
+  document.head.appendChild(s);
+})();
 
 // CSS animations inyectadas dinámicamente
 (function(){
