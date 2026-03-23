@@ -2366,7 +2366,8 @@ async function generateConsciousnessChain() {
 // Inicializar todo al cargar
 initNeuralNet();
 
-
+// CSS animations inyectadas dinámicamente
+(function(){
   const style=document.createElement('style');
   style.textContent=`
     @keyframes sphereGelatin{
