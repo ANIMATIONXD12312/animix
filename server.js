@@ -792,6 +792,74 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // /think → Groq directo para pensamientos de la esfera (máxima variedad)
+  if (urlObj.pathname === '/think' && req.method === 'POST') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const d = JSON.parse(body);
+        const GROQ_KEY = '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';
+
+        // Elegir modelo al azar para máxima variedad
+        const models = [
+          'llama-3.1-8b-instant',      // rápido, casual
+          'gemma2-9b-it',              // diferente estilo
+          'llama3-8b-8192',            // otro estilo
+        ];
+        const model = models[Math.floor(Math.random() * models.length)];
+
+        // Seed aleatoria para forzar variedad
+        const seed = Math.floor(Math.random() * 999999);
+
+        const groqBody = JSON.stringify({
+          model,
+          messages: d.messages || [],
+          max_tokens: 25,
+          temperature: 1.4,        // máxima variedad posible
+          top_p: 0.95,
+          frequency_penalty: 1.5,  // penaliza repetición fuertemente
+          presence_penalty: 1.0,
+          seed,
+        });
+
+        const opts = {
+          hostname: 'api.groq.com',
+          path: '/openai/v1/chat/completions',
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GROQ_KEY}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(groqBody),
+          },
+          timeout: 8000,
+        };
+
+        const req2 = https.request(opts, (pRes) => {
+          const chunks = [];
+          pRes.on('data', c => chunks.push(c));
+          pRes.on('end', () => {
+            try {
+              const data = JSON.parse(Buffer.concat(chunks).toString());
+              const reply = data?.choices?.[0]?.message?.content || '';
+              res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+              res.end(JSON.stringify({ reply, model }));
+            } catch(e) {
+              res.writeHead(500); res.end('{}');
+            }
+          });
+        });
+        req2.on('error', () => { res.writeHead(500); res.end('{}'); });
+        req2.on('timeout', () => { req2.destroy(); res.writeHead(504); res.end('{}'); });
+        req2.write(groqBody);
+        req2.end();
+      } catch(e) {
+        res.writeHead(400); res.end('{}');
+      }
+    });
+    return;
+  }
+
   // /gemini → proxy Groq
   if (urlObj.pathname === '/gemini' && req.method === 'POST') {
     let body = '';

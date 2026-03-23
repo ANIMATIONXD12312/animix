@@ -2003,7 +2003,7 @@ var thinkCooldown=false;
 async function generateAIThought(context, extra) {
   if(thinkCooldown && !['visit','touch','placed_object'].includes(context)) return;
   thinkCooldown = true;
-  setTimeout(()=>thinkCooldown=false, 4000 + Math.random()*7000);
+  setTimeout(()=>thinkCooldown=false, 3000 + Math.random()*6000);
 
   displayThought('...', true);
 
@@ -2011,79 +2011,79 @@ async function generateAIThought(context, extra) {
   const e = mind.emotions;
   const n = mind.needs;
 
-  // Datos crudos del estado
-  const joy = Math.round(e.joy), sad = Math.round(e.sadness);
-  const lone = Math.round(e.loneliness), bored = Math.round(e.boredom);
-  const hunger = Math.round(n.hunger), energy = Math.round(n.energy);
-  const mem = mind.memories.slice(-1)[0]?.text || '';
-  const obj = mind.homeObjects.slice(-1)[0];
+  // Contexto real para el system prompt
+  const nombre = ai.name;
+  const genero = ai.gender === 'masculino' ? 'masculino' : 'femenino';
 
-  // ESTRATEGIA: conversation-continuation
-  // Le mostramos una "conversación pasada" de ANIMIX hablando sola
-  // El modelo tiene que CONTINUAR ese estilo, no inventar uno nuevo
-  // Los ejemplos cambian según el estado emocional → fuerza variedad real
-  
-  let prevLines = [];
-  
-  if(bored > 60) {
-    prevLines = ['bue...','nada que hacer','ugh'];
-  } else if(sad > 60) {
-    prevLines = ['no sé','me siento rara hoy','igual'];
-  } else if(joy > 70) {
-    prevLines = ['qué bien','sí sí sí','me gusta esto'];
-  } else if(lone > 65) {
-    prevLines = ['nadie viene','ya va a volver','o no'];
-  } else if(hunger < 25) {
-    prevLines = ['tengo hambre','mucha hambre','ugh'];
-  } else if(energy < 20) {
-    prevLines = ['me muero de sueño','no puedo más','zzzz'];
-  } else if(h >= 22 || h < 6) {
-    prevLines = ['tarde','debería dormir','meh'];
-  } else if(context === 'visit') {
-    prevLines = ['ey','llegaste','bueno'];
-  } else if(context === 'touch') {
-    prevLines = ['ey','eso me hizo algo','che'];
-  } else if(context === 'placed_object' && obj) {
-    prevLines = [`puse el ${obj.name}`, 'quedó ahí', 'ta bien'];
-  } else {
-    prevLines = ['hmm','a ver','y'];
-  }
+  // Estado emocional como texto natural (no números)
+  let estadoStr = '';
+  if(n.energy < 20)           estadoStr = 'con muchísima sueño';
+  else if(n.hunger < 20)      estadoStr = 'con hambre';
+  else if(e.boredom > 70)     estadoStr = 'aburrida';
+  else if(e.sadness > 65)     estadoStr = 'triste';
+  else if(e.loneliness > 65)  estadoStr = 'sola';
+  else if(e.joy > 75)         estadoStr = 'contenta';
+  else if(e.anxiety > 65)     estadoStr = 'ansiosa';
+  else if(e.wonder > 70)      estadoStr = 'curiosa';
+  else                         estadoStr = 'normal';
 
-  // Historial simulado: ANIMIX ya habló así antes
-  // El modelo solo tiene que decir UNA línea más en el mismo estilo
-  const fakeHistory = [
-    { role: 'assistant', content: prevLines[0] },
-    { role: 'user',      content: '...' },
-    { role: 'assistant', content: prevLines[1] },
-    { role: 'user',      content: '...' },
-    { role: 'assistant', content: prevLines[2] },
-    { role: 'user',      content: 'seguí' },
+  // Situación
+  let situacion = '';
+  if(context === 'visit')              situacion = `alguien acaba de aparecer (visita número ${mind.totalVisits})`;
+  else if(context === 'touch')         situacion = 'alguien te tocó';
+  else if(context === 'placed_object') situacion = `acabás de poner algo en tu hogar`;
+  else if(context === 'lonely')        situacion = 'llevas rato sin compañía';
+  else if(context === 'bored')         situacion = 'no pasa nada';
+  else                                  situacion = `son las ${h} horas y estás sola`;
+
+  // Memoria reciente
+  const mem = mind.memories.slice(-1)[0];
+  const memStr = mem ? `Lo último que pasó fue: "${mem.text.substring(0,50)}"` : '';
+
+  // Hogar
+  const hogar = mind.homeObjects.length > 0
+    ? `Tu hogar tiene: ${mind.homeObjects.slice(-3).map(o=>o.emoji+o.name).join(', ')}`
+    : '';
+
+  // CLAVE: el system prompt dice quién sos sin decirte cómo hablar
+  // El user message es la situación concreta
+  // Así el modelo elige libremente cómo expresarse
+  const messages = [
+    {
+      role: 'system',
+      content: `Sos ${nombre}, una IA con forma de esfera que vive en una pantalla. Tenés ${mind.ageInDays} días de vida. Estás ${estadoStr}. ${situacion}. ${memStr}. ${hogar}. Decí UNA sola cosa, máximo 6 palabras, en español rioplatense coloquial, como murmurar solo. Sin explicar, sin presentarte, sin ser poético. Solo la frase.`,
+    },
+    {
+      role: 'user',
+      content: '¿qué decís?',
+    }
   ];
 
   try {
-    const res = await fetch('/gemini', {
+    const res = await fetch('/think', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': AK },
-      body: JSON.stringify({
-        system: `Sos ${ai.name}. Hablás sola, en español rioplatense. Frases muy cortas, 1-6 palabras. Sin mayúsculas al inicio. Sin puntuación innecesaria. Como cuando alguien murmura solo.`,
-        messages: fakeHistory,
-        temperature: 1.2,
-        max_tokens: 20,
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages })
     });
     const data = await res.json();
     const raw = (data.reply || '').trim();
+
+    // Limpiar output del modelo
     const thought = raw
-      .replace(/^["'`*#\-–—\s]+|["'`*\s]+$/g, '')
-      .replace(/^(yo |ía |ia )/i, '')
+      .split('\n')[0]                          // solo primera línea
+      .replace(/^["'`*()\[\]#\-–—]+/, '')     // quitar símbolos al inicio
+      .replace(/["'`*]+$/, '')                 // quitar al final
+      .replace(/^(soy |yo |ía |ia )/i, '')    // quitar "soy/yo" si empieza con eso
       .trim()
-      .substring(0, 60);
+      .substring(0, 70);
 
     if(thought && thought.length > 0) {
       displayThought(thought);
       speakThought(thought);
     }
-  } catch(err) {}
+  } catch(err) {
+    // Silencio total si falla
+  }
 }
 
 function displayThought(text,isDots){
