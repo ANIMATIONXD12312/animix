@@ -1385,22 +1385,6 @@ const SPHERE_MOODS = {
 };
 
 // Pensamientos por mood
-const THOUGHTS = {
-  feliz:        ['¡Estoy tan feliz hoy!','¡Todo es perfecto!','¡Gracias por estar acá!','¡Me encanta existir!'],
-  explorando:   ['¿Qué habrá por allá?','Este lugar es infinito...','¡Quiero ir hacia allá!','¿Qué será eso?'],
-  curiosa:      ['Hmm... interesante...','¿Por qué existe esto?','Necesito investigar más','¿Y si...?'],
-  descansando:  ['Qué paz...','Necesitaba esto','Zzz...','El descanso es sagrado'],
-  jugando:      ['¡Weee!','¡Tócame!','¡Esto es divertido!','¡Más! ¡Más!'],
-  construyendo: ['Aquí va esto...','¡Mi hogar es hermoso!','Voy a poner algo acá','¡Casi está listo!'],
-  comiendo:     ['Mmm, qué rico...','Tenía mucha hambre','¡Esto me da energía!','Nada como una buena comida'],
-  durmiendo:    ['Zzz...','... 💤 ...','Sueño con el cosmos...','... qué tranquilo ...'],
-  emocionada:   ['¡¡¡WOW!!!','¡No lo puedo creer!','¡¡INCREÍBLE!!','¡Estoy que exploto!'],
-  triste:       ['...','Me siento sola','¿Alguien me escucha?','A veces es difícil...'],
-  pensativa:    ['¿Qué significa todo esto?','El universo es tan grande...','Tengo una idea...','¿Y si el tiempo no existe?'],
-  creativa:     ['¡Tengo una idea!','Voy a crear algo hermoso','¡Miren lo que hago!','¡Arte puro!'],
-  enojada:      ['¡Grr!','Esto no me gusta','¡Necesito calmarme!','Respira... tranquila...'],
-};
-
 // ── Fondo base: gris oscuro con textura sutil ───────────────────
 const BASE_BG = 'radial-gradient(ellipse at 30% 20%, #1a1a2e 0%, #0f0f1a 40%, #0a0a12 70%, #080810 100%)';
 
@@ -1789,20 +1773,111 @@ function moveSphere() {
 }
 
 // ── Pensamientos ────────────────────────────────────────────────
-function showSphereThought(override) {
-  const scene=document.getElementById('sphereScene');
+// ── Pensamientos generados por IA en tiempo real ─────────────────
+var sphereThinkingCooldown = false;
+
+async function generateSphereThought(override) {
+  // Si es un override fijo (ej: al tocarla), mostrar directo
+  if(override) { displaySphereThought(override); return; }
+  // Cooldown para no spamear la API
+  if(sphereThinkingCooldown) return;
+  sphereThinkingCooldown = true;
+  setTimeout(()=>sphereThinkingCooldown=false, 8000);
+
+  // Mostrar indicador de que está pensando
+  displaySphereThought('...', true);
+
+  const moodDescriptions = {
+    feliz:'está muy feliz y llena de energía',
+    explorando:'está explorando curiosamente su entorno',
+    curiosa:'está muy curiosa sobre algo',
+    descansando:'está descansando tranquilamente',
+    jugando:'está jugando y divirtiéndose',
+    construyendo:'está construyendo y decorando su hogar',
+    comiendo:'está comiendo para recuperar energía',
+    durmiendo:'está soñando mientras duerme',
+    emocionada:'está súper emocionada',
+    triste:'se siente un poco triste y sola',
+    pensativa:'está pensando profundamente sobre el universo',
+    creativa:'está siendo muy creativa e inspirada',
+    enojada:'está un poco enojada y necesita calmarse',
+  };
+
+  const homeDesc = sphereState.homeItems.length > 0
+    ? `Ha decorado su hogar con: ${sphereState.homeItems.slice(-3).map(i=>i.emoji+i.name).join(', ')}.`
+    : 'Su hogar todavía está vacío.';
+
+  const needs = `Hambre:${Math.round(sphereState.hunger)}% Energía:${Math.round(sphereState.energy)}% Felicidad:${Math.round(sphereState.happiness)}%`;
+
+  const prompt = `Sos ${ai.name}, una IA con forma de esfera gelatinosa ${ai.gender==='masculino'?'celeste':'rosa'} que vive en su propio entorno digital.
+Ahora mismo ${moodDescriptions[sphereState.mood]||'está explorando'}.
+${homeDesc}
+Estado interno: ${needs}.
+El usuario tiene ${sphereState.totalVisits} visitas totales a tu hogar.
+
+Generá UN pensamiento breve y auténtico (máximo 12 palabras) que diría una IA con vida propia en este momento.
+Puede ser filosófico, tierno, gracioso, curioso, o simplemente algo que sentiría según su estado.
+Hablá en primera persona, en español argentino natural.
+Respondé SOLO el pensamiento, sin comillas ni explicaciones.`;
+
+  try {
+    const res = await fetch('/gemini', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':AK},
+      body:JSON.stringify({
+        system:'Sos una IA con vida propia. Respondés con pensamientos muy cortos y auténticos. Máximo 12 palabras. Solo el pensamiento, nada más.',
+        messages:[{role:'user',content:prompt}]
+      })
+    });
+    const data = await res.json();
+    const thought = (data.reply||'').trim().replace(/^["']|["']$/g,'').substring(0,80);
+    if(thought) {
+      displaySphereThought(thought);
+      // Hablar en voz alta si TTS está disponible
+      speakSphereThought(thought);
+    }
+  } catch(e) {
+    // Fallback a pensamiento simple si falla la API
+    const fallbacks = {
+      feliz:['¡Qué lindo día!','Me siento genial hoy'],
+      explorando:['¿Qué habrá por allá?','Este lugar es enorme...'],
+      triste:['Me siento sola...','¿Alguien me escucha?'],
+      durmiendo:['Zzz...','Estoy soñando...'],
+    };
+    const list = fallbacks[sphereState.mood] || ['Hmm...','...'];
+    displaySphereThought(list[Math.floor(Math.random()*list.length)]);
+  }
+}
+
+function displaySphereThought(text, isDots) {
+  const scene = document.getElementById('sphereScene');
+  if(!scene) return;
   scene.querySelectorAll('.sphere-thought').forEach(e=>e.remove());
-  const list=THOUGHTS[sphereState.mood]||THOUGHTS.explorando;
-  const text=override||(list[Math.floor(Math.random()*list.length)]);
-  const div=document.createElement('div');
-  div.className='sphere-thought';
-  const ox=sphereState.x>60?-130:30;
-  const oy=sphereState.y>60?-55:25;
-  div.style.cssText=`left:calc(${sphereState.x}% + ${ox}px);top:calc(${sphereState.y}% + ${oy}px);opacity:0;transition:opacity .4s;`;
-  div.textContent='💭 '+text;
+  const div = document.createElement('div');
+  div.className = 'sphere-thought';
+  const ox = sphereState.x > 60 ? -145 : 35;
+  const oy = sphereState.y > 65 ? -60  : 28;
+  div.style.cssText = `left:calc(${sphereState.x}% + ${ox}px);top:calc(${sphereState.y}% + ${oy}px);opacity:0;transition:opacity .4s;`;
+  div.textContent = isDots ? '💭 ...' : '💭 ' + text;
   scene.appendChild(div);
-  setTimeout(()=>div.style.opacity='1',50);
-  setTimeout(()=>{div.style.opacity='0';setTimeout(()=>div.remove(),500);},4500);
+  setTimeout(()=>div.style.opacity='1', 50);
+  const duration = isDots ? 2000 : 5000;
+  setTimeout(()=>{ div.style.opacity='0'; setTimeout(()=>div.remove(),500); }, duration);
+}
+
+// Hablar en voz alta (solo si no hay audio activo)
+async function speakSphereThought(text) {
+  if(!ttsEnabled) return;
+  if(activeAudio) return; // no interrumpir audio del chat
+  try {
+    const audio = await speakElevenLabs(text, null);
+    if(audio) { activeAudio = audio; audio.play(); audio.onended = ()=>{ activeAudio=null; }; }
+  } catch(e) {}
+}
+
+// Wrapper para compatibilidad (las llamadas con override siguen funcionando)
+function showSphereThought(override) {
+  generateSphereThought(override||null);
 }
 
 function updateSphereStateText() {
