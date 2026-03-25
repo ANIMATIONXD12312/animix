@@ -1078,14 +1078,14 @@ const server = http.createServer(async (req, res) => {
           ? [
               ()=>tryOpenRouter('deepseek/deepseek-r1'),
               ()=>tryOpenRouter('qwen/qwen3-235b-a22b'),
+              ()=>tryGroq('llama-3.1-70b-versatile'),
               ()=>tryGroq('llama3-8b-8192'),
-              ()=>tryGroq('gemma2-9b-it'),
             ]
           : [
-              ()=>tryGroq('llama3-8b-8192'),
-              ()=>tryGroq('gemma2-9b-it'),
               ()=>tryOpenRouter('qwen/qwen3-235b-a22b'),
-              ()=>tryGroq('llama-3.1-8b-instant'),
+              ()=>tryOpenRouter('meta-llama/llama-3.1-70b-instruct'),
+              ()=>tryGroq('llama-3.1-70b-versatile'),
+              ()=>tryGroq('llama3-8b-8192'),
             ];
 
         let reply = null;
