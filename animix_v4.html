@@ -711,7 +711,7 @@ async function sendMsg(){
   attach=[];document.getElementById('att-row').innerHTML='';
   var typer=showTyp();
   try{
-    var geminiMessages=history.slice(-12).map(function(m){
+    var geminiMessages=history.slice(-12, -1).map(function(m){
       var txt=typeof m.content==='string'?m.content:((m.content.find(function(x){return x.type==='text';})||{}).text||'');
       return {role:m.role==='assistant'?'model':'user',parts:[{text:txt}]};
     });
