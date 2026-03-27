@@ -7,9 +7,13 @@ const PORT = process.env.PORT || 3000;
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ─── Motor 2: Hugging Face Inference API ────────────────────────────────────
-const HF_TOKEN = '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';
-const OR_TOKEN = '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';
+// ─── API Keys desde variables de entorno ────────────────────────────────────
+const HF_TOKEN       = process.env.HF_TOKEN       || '';
+const OR_TOKEN       = process.env.OR_TOKEN        || '';
+const REPLICATE_TOKEN= process.env.REPLICATE_TOKEN || '';
+const GROQ_KEY       = process.env.GROQ_KEY        || '';
+const ELEVENLABS_KEY = process.env.ELEVENLABS_KEY  || '';
+const OR_KEY         = process.env.OR_TOKEN        || ''; // alias usado en /gemini
 
 // Mejorar prompt con IA antes de generar imagen
 async function enhancePrompt(prompt) {
@@ -324,7 +328,6 @@ function getHordeStatus(id) {
 }
 
 // ─── Motor 3: Replicate ─────────────────────────────────────────────────────
-const REPLICATE_TOKEN = 'r8_1hl1pXpIdCvXTirXB3Vi7OiQ0kgzVVO3LlP4D';
 
 async function generateReplicate(prompt) {
   // Crear predicción
@@ -498,7 +501,7 @@ async function transcribeAudio(audioBuffer, mimeType) {
   );
 
   const body = Buffer.concat([header, audioBuffer, modelPart]);
-  const GROQ_KEY = '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';
+
 
   return new Promise((resolve, reject) => {
     const opts = {
@@ -531,7 +534,7 @@ async function transcribeAudio(audioBuffer, mimeType) {
 }
 
 // ─── Motor de Voz: ElevenLabs TTS ────────────────────────────────────────────
-const ELEVENLABS_KEY = process.env.ELEVENLABS_KEY || '';
+
 
 // Voces premium en español argentino — las más humanas y naturales
 // Malena: joven, dinámica, acento rioplatense perfecto → ANIMIX
@@ -799,7 +802,7 @@ const server = http.createServer(async (req, res) => {
     req.on('end', () => {
       try {
         const d = JSON.parse(body);
-        const GROQ_KEY = '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';
+
         const models = ['llama-3.1-8b-instant','gemma2-9b-it','llama3-8b-8192'];
         const model = models[Math.floor(Math.random()*models.length)];
         const seed  = Math.floor(Math.random()*999999);
@@ -913,7 +916,7 @@ const server = http.createServer(async (req, res) => {
         if(newEmotions.loneliness > 70) events.push('Se sintió muy sola');
 
         // Generar descripción de lo que vivió
-        const GROQ_KEY = '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';
+
         const name = d.name || 'ANIMIX';
 
         let wakeUpMsg = '';
@@ -962,7 +965,7 @@ const server = http.createServer(async (req, res) => {
               const parts = [];
               m.content.forEach(p => {
                 if (p.type === 'text' && p.text) parts.push({ type: 'text', text: String(p.text) });
-                else if (p.type === 'image_url') parts.push(p); // already correct format
+                else if (p.type === 'image_url') parts.push(p);
                 else if (p.type === 'image' && p.source) parts.push({ type: 'image_url', image_url: { url: `data:${p.source.media_type};base64,${p.source.data}` } });
               });
               if (parts.length) openaiMessages.push({ role, content: parts });
@@ -971,15 +974,28 @@ const server = http.createServer(async (req, res) => {
               if (m.parts && Array.isArray(m.parts)) text = m.parts.map(p => String(p.text || '')).join('');
               else if (typeof m.content === 'string') text = m.content;
               else if (m.content) text = String(m.content);
-              if (!text || !text.trim()) return;
+              // FIX: loguear mensajes vacíos en lugar de ignorarlos silenciosamente
+              if (!text || !text.trim()) {
+                console.log('[GEMINI] ⚠ Mensaje ignorado (texto vacío):', JSON.stringify(m).substring(0, 200));
+                return;
+              }
               openaiMessages.push({ role, content: text });
             }
-          } catch(e) { console.log('Error parsing message:', e.message); }
+          } catch(e) { console.log('Error parsing message:', e.message, JSON.stringify(m).substring(0, 200)); }
         });
+
+        // FIX: verificar que haya al menos un mensaje de usuario antes de llamar a la IA
+        const hasUserMsg = openaiMessages.some(m => m.role === 'user');
+        if (!hasUserMsg) {
+          console.log('[GEMINI] ⚠ No hay mensajes de usuario válidos. openaiMessages:', JSON.stringify(openaiMessages).substring(0, 300));
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'No se recibió ningún mensaje de usuario.' }));
+          return;
+        }
 
         // Sistema de modelos híbrido: DeepSeek R1 + Qwen 3 via OpenRouter
         // DeepSeek R1 para razonamiento y código, Qwen 3 como fallback
-        const OR_KEY = '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';
+
 
         // Detectar si es pregunta de código/programación para usar el mejor modelo
         const lastMsg = openaiMessages[openaiMessages.length-1];
@@ -990,7 +1006,7 @@ const server = http.createServer(async (req, res) => {
         const clientTemp = parsed.temperature || null;
         const clientMaxTokens = parsed.max_tokens || 4096;
 
-        const GROQ_KEY = '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';
+
 
         // Función para llamar Groq (rápido y confiable)
         function tryGroq(model) {
@@ -1145,11 +1161,28 @@ const server = http.createServer(async (req, res) => {
 
   // / → servir el HTML
   if (urlObj.pathname === '/' || urlObj.pathname === '/index.html') {
-    const files = fs.readdirSync(__dirname).filter(f => f.endsWith('.html'));
-    if (!files.length) { res.writeHead(404); res.end('No se encontró .html'); return; }
-    const html = fs.readFileSync(path.join(__dirname, files[0]), 'utf8');
+    // Buscar HTML en varias ubicaciones (Railway puede variar el directorio)
+    const searchDirs = [__dirname, process.cwd(), '/app', '/home/app'];
+    let htmlContent = null;
+    for (const dir of searchDirs) {
+      try {
+        const files = fs.readdirSync(dir).filter(f => f.endsWith('.html'));
+        if (files.length) {
+          const target = files.find(f => f === 'index.html') || files[0];
+          htmlContent = fs.readFileSync(path.join(dir, target), 'utf8');
+          console.log(`[HTML] Sirviendo ${target} desde ${dir}`);
+          break;
+        }
+      } catch(e) { /* directorio no existe */ }
+    }
+    if (!htmlContent) {
+      console.error('[HTML] ERROR: No se encontró .html en:', searchDirs.join(', '));
+      res.writeHead(404);
+      res.end('No se encontró index.html. Asegurate de que esté en la misma carpeta que server.js');
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html);
+    res.end(htmlContent);
     return;
   }
 
